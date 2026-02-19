@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 from datetime import datetime
+import time
 from array import array
 from collections import defaultdict
 from pathlib import Path
@@ -48,6 +49,51 @@ def as_root_uri(path_str, redirector):
     return path_str
 
 
+def run_command(cmd, progress=None, description=None, env=None, timeout=300):
+    task_id = None
+    started = time.time()
+    if description:
+        emit_log(progress, f"[cmd] start: {description}", style="bright_black")
+    if progress is not None and description:
+        task_id = progress.add_task(f"[yellow]{description}", total=None)
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+
+    heartbeat_sec = 20
+    last_heartbeat = time.time()
+    while True:
+        rc = proc.poll()
+        if rc is not None:
+            break
+        now = time.time()
+        if now - started > timeout:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+            if progress is not None and task_id is not None:
+                progress.remove_task(task_id)
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=timeout, output=stdout, stderr=stderr)
+        if progress is None and description and (now - last_heartbeat) >= heartbeat_sec:
+            print(f"[cmd] running: {description} elapsed={int(now - started)}s")
+            last_heartbeat = now
+        time.sleep(0.2)
+
+    stdout, stderr = proc.communicate()
+    if progress is not None and task_id is not None:
+        progress.remove_task(task_id)
+    elapsed = time.time() - started
+    if description:
+        emit_log(progress, f"[cmd] done: {description} ({elapsed:.1f}s, rc={proc.returncode})", style="bright_black")
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd, output=stdout, stderr=stderr)
+    return stdout, stderr
+
+
 def query_das_files(dataset, instance=None, progress=None):
     if shutil.which("dasgoclient") is None:
         raise RuntimeError("dasgoclient not found in PATH. Needed for DAS dataset resolution.")
@@ -57,22 +103,21 @@ def query_das_files(dataset, instance=None, progress=None):
         query += f" instance={instance}"
     emit_log(progress, f"[resolve] DAS query: {query}", style="bright_black")
 
-    proc = subprocess.run(
+    stdout, _ = run_command(
         ["dasgoclient", "--query", query],
-        capture_output=True,
-        text=True,
-        check=True,
+        progress=progress,
+        description=f"dasgoclient file query ({dataset})",
         timeout=180,
     )
 
-    files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    files = [line.strip() for line in stdout.splitlines() if line.strip()]
     if not files:
         raise RuntimeError(f"No files found from DAS query: {query}")
     emit_log(progress, f"[resolve] DAS returned {len(files)} files", style="bright_black")
     return files
 
 
-def query_run_for_file(file_pfn, instance=None):
+def query_run_for_file(file_pfn, instance=None, progress=None):
     if shutil.which("dasgoclient") is None:
         return None
 
@@ -81,17 +126,16 @@ def query_run_for_file(file_pfn, instance=None):
         query += f" instance={instance}"
 
     try:
-        proc = subprocess.run(
+        stdout, _ = run_command(
             ["dasgoclient", "--query", query],
-            capture_output=True,
-            text=True,
-            check=True,
+            progress=progress,
+            description=f"dasgoclient run query ({Path(file_pfn).name})",
             timeout=60,
         )
     except Exception:
         return None
 
-    vals = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    vals = [line.strip() for line in stdout.splitlines() if line.strip()]
     if not vals:
         return None
 
@@ -259,7 +303,7 @@ def build_brilcalc_env(lumi_cfg):
     return env
 
 
-def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cfg, strict=False):
+def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cfg, strict=False, progress=None):
     if not selected_runs:
         return None
 
@@ -295,6 +339,8 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
     print(f"[lumi] era={era} running brilcalc: {cmd_text}")
 
     proc = None
+    stdout = ""
+    stderr = ""
     source_attempt_error = None
 
     # Attempt 1: run with optional brilws env sourcing from config.
@@ -307,23 +353,23 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
                 f"source {shlex.quote(brilcalc_env)}\n"
                 f"eval {shlex.quote(cmd_text)}\n"
             )
-            proc = subprocess.run(
+            stdout, stderr = run_command(
                 ["bash", "--noprofile", "--norc", "-lc", shell_cmd],
-                capture_output=True,
-                text=True,
-                check=True,
+                progress=progress,
+                description=f"brilcalc (era={era}, sourced env)",
                 timeout=300,
                 env=run_env,
             )
+            proc = True
         else:
-            proc = subprocess.run(
+            stdout, stderr = run_command(
                 cmd,
-                capture_output=True,
-                text=True,
-                check=True,
+                progress=progress,
+                description=f"brilcalc (era={era})",
                 timeout=300,
                 env=run_env,
             )
+            proc = True
     except subprocess.CalledProcessError as exc:
         source_attempt_error = exc
     except Exception as exc:
@@ -333,14 +379,14 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
     if proc is None and isinstance(source_attempt_error, subprocess.CalledProcessError):
         if source_attempt_error.returncode == 127 and brilcalc_env:
             try:
-                proc = subprocess.run(
+                stdout, stderr = run_command(
                     cmd,
-                    capture_output=True,
-                    text=True,
-                    check=True,
+                    progress=progress,
+                    description=f"brilcalc retry without sourcing (era={era})",
                     timeout=300,
                     env=run_env,
                 )
+                proc = True
             except Exception:
                 pass
 
@@ -358,7 +404,7 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
         print(msg)
         return None
 
-    recorded_in_unit = parse_brilcalc_csv(proc.stdout, selected_runs)
+    recorded_in_unit = parse_brilcalc_csv(stdout, selected_runs)
     if recorded_in_unit <= 0.0:
         msg = f"[lumi][WARN] era={era}: brilcalc returned zero recorded lumi in selected runs."
         if strict:
@@ -468,17 +514,29 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
         if progress is not None and stage_task is not None:
             progress.update(stage_task, description=f"[white]{era}: querying DAS")
         das_files = query_das_files(dataset=dataset, instance=das_instance, progress=progress)
+        map_task = None
+        if progress is not None:
+            map_task = progress.add_task(f"[yellow]{era}: map files -> runs", total=len(das_files))
+        unresolved_count = 0
         for pfn in das_files:
             run = extract_run_from_name(pfn)
             if run is None:
-                run = query_run_for_file(pfn, instance=das_instance)
+                run = query_run_for_file(pfn, instance=das_instance, progress=None)
             if run is None:
                 msg = f"Era {era}: cannot resolve run for DAS file '{pfn}'."
                 if strict:
                     raise RuntimeError(msg)
                 _emit(progress, f"[resolve][WARN] {msg} Skipping file.", style="yellow")
-                continue
-            run_files[run].append(as_root_uri(pfn, redirector))
+                unresolved_count += 1
+            else:
+                run_files[run].append(as_root_uri(pfn, redirector))
+            if progress is not None and map_task is not None:
+                progress.update(map_task, advance=1)
+        _emit(
+            progress,
+            f"[resolve] {era}: mapped {len(das_files) - unresolved_count}/{len(das_files)} DAS files to runs",
+            style="bright_black",
+        )
 
     if not run_files:
         raise RuntimeError(f"Era {era}: no inputs found. Provide one of: file / files / run_files / DAS(das).")
@@ -534,6 +592,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
                 golden_json_path=golden_json_for_brilcalc,
                 lumi_cfg=lumi_cfg,
                 strict=strict,
+                progress=progress,
             )
             if lumi_fb is not None:
                 lumi_source = "brilcalc"

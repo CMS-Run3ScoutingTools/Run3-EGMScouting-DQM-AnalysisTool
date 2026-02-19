@@ -7,7 +7,7 @@ import mplhep as hep
 from scipy.optimize import curve_fit
 from scipy.special import erf
 
-from dqm_pipeline.core import aggregate_histogram_for_era, sanitize
+from dqm_pipeline.core import aggregate_histogram_for_era, sanitize, emit_log
 
 
 MODULE_NAME = "mass_fit"
@@ -254,6 +254,11 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
 
     out_dir = Path(out_root) / section.get("output_subdir", MODULE_NAME)
     out_dir.mkdir(parents=True, exist_ok=True)
+    emit_log(
+        progress,
+        f"[{MODULE_NAME}] start variables={len(variables)} eras={len(era_sources)} out_dir={out_dir}",
+        style="bold magenta",
+    )
 
     all_results = {}
     var_task = None
@@ -261,6 +266,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
         var_task = progress.add_task(f"[magenta]{MODULE_NAME}: variables", total=len(variables))
 
     for variable in variables:
+        emit_log(progress, f"[{MODULE_NAME}] variable start: {variable}", style="magenta")
         era_hists = {}
         variable_results = {w: {} for w in fit_windows}
         era_task = None
@@ -352,6 +358,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
             )
 
         all_results[variable] = variable_results
+        emit_log(progress, f"[{MODULE_NAME}] variable done: {variable}", style="magenta")
         if progress is not None and var_task is not None:
             progress.update(var_task, advance=1)
 
@@ -359,5 +366,5 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     with open(summary_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(all_results, f, sort_keys=False)
 
-    print(f"[{MODULE_NAME}] Done. Outputs in {out_dir}")
+    emit_log(progress, f"[{MODULE_NAME}] done. Outputs in {out_dir}", style="bold magenta")
     return all_results

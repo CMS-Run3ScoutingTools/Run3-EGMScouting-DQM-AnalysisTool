@@ -7,7 +7,7 @@ import ROOT
 import yaml
 import mplhep as hep
 
-from dqm_pipeline.core import build_output_root, prepare_era_sources
+from dqm_pipeline.core import build_output_root, emit_log, prepare_era_sources
 from dqm_pipeline.modules import MODULE_REGISTRY
 
 try:
@@ -15,6 +15,7 @@ try:
         BarColumn,
         MofNCompleteColumn,
         Progress,
+        SpinnerColumn,
         TaskProgressColumn,
         TextColumn,
         TimeElapsedColumn,
@@ -70,6 +71,7 @@ def progress_context(enabled=True):
         return
 
     with Progress(
+        SpinnerColumn(style="bold cyan"),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TaskProgressColumn(),
@@ -88,11 +90,14 @@ def main():
     cfg = load_config(config_path)
 
     hep.style.use("CMS")
+    print(f"[pipeline] config={config_path}")
 
     out_root = build_output_root(cfg)
     out_root.mkdir(parents=True, exist_ok=True)
+    print(f"[pipeline] out_root={out_root}")
 
     with progress_context(enabled=not args.no_progress) as progress:
+        emit_log(progress, "[pipeline] stage: resolve eras", style="bold cyan")
         era_sources = prepare_era_sources(
             cfg=cfg,
             config_dir=config_dir,
@@ -101,17 +106,19 @@ def main():
         )
 
         if args.resolve_only:
-            print("[pipeline] resolve-only mode done.")
+            emit_log(progress, "[pipeline] resolve-only mode done.", style="bold green")
             return
 
         combined_summary = {}
         modules_to_run = resolve_modules(args.module)
+        emit_log(progress, f"[pipeline] stage: run modules {modules_to_run}", style="bold cyan")
 
         module_task = None
         if progress is not None:
             module_task = progress.add_task("[green]Running modules", total=len(modules_to_run))
 
         for module_name in modules_to_run:
+            emit_log(progress, f"[pipeline] module start: {module_name}", style="green")
             runner = MODULE_REGISTRY[module_name]
             combined_summary[module_name] = runner(
                 cfg=cfg,
@@ -120,6 +127,7 @@ def main():
                 strict=args.strict,
                 progress=progress,
             )
+            emit_log(progress, f"[pipeline] module done: {module_name}", style="green")
             if progress is not None and module_task is not None:
                 progress.update(module_task, advance=1)
 
@@ -127,7 +135,7 @@ def main():
     with open(summary_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(combined_summary, f, sort_keys=False)
 
-    print(f"[pipeline] Done. Main output directory: {out_root}")
+    print(f"[pipeline] done. main output directory: {out_root}")
 
 
 if __name__ == "__main__":

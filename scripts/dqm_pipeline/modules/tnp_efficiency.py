@@ -8,6 +8,7 @@ import mplhep as hep
 
 from dqm_pipeline.core import (
     aggregate_histogram_for_era,
+    emit_log,
     load_histogram,
     rebin_histogram,
     sanitize,
@@ -141,6 +142,11 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
 
     out_dir = Path(out_root) / section.get("output_subdir", MODULE_NAME)
     out_dir.mkdir(parents=True, exist_ok=True)
+    emit_log(
+        progress,
+        f"[{MODULE_NAME}] start jobs={len(jobs)} eras={len(era_sources)} out_dir={out_dir}",
+        style="bold blue",
+    )
 
     mc_file = section.get("mc_file")
     mc_run_number = section.get("mc_run_number")
@@ -152,6 +158,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
 
     for job in jobs:
         job_name = job["name"]
+        emit_log(progress, f"[{MODULE_NAME}] job start: {job_name}", style="blue")
         tags = job.get("tags", [])
         axis = job.get("axis", "pt").lower()
         bins = job.get("bins", bins_cfg.get(axis))
@@ -163,6 +170,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
             tag_task = progress.add_task(f"[blue]{MODULE_NAME}: {job_name} tags", total=len(tags))
 
         for tag in tags:
+            emit_log(progress, f"[{MODULE_NAME}] tag start: {job_name}/{tag}", style="blue")
             target_dir, num_name, den_name = build_tnp_hist_names(resonance, job, tag)
             all_results[job_name][tag] = {}
             per_era_points = {}
@@ -275,8 +283,10 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     out_png=str(out_png),
                     mc_points=mc_points,
                 )
+            emit_log(progress, f"[{MODULE_NAME}] tag done: {job_name}/{tag}", style="blue")
             if progress is not None and tag_task is not None:
                 progress.update(tag_task, advance=1)
+        emit_log(progress, f"[{MODULE_NAME}] job done: {job_name}", style="blue")
         if progress is not None and job_task is not None:
             progress.update(job_task, advance=1)
 
@@ -284,5 +294,5 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     with open(summary_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(all_results, f, sort_keys=False)
 
-    print(f"[{MODULE_NAME}] Done. Outputs in {out_dir}")
+    emit_log(progress, f"[{MODULE_NAME}] done. Outputs in {out_dir}", style="bold blue")
     return all_results
