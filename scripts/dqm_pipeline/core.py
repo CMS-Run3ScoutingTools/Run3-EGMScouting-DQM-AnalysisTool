@@ -57,7 +57,7 @@ def run_command(cmd, progress=None, description=None, env=None, timeout=300):
     if description:
         emit_log(progress, f"[cmd] start: {description}", style="bright_black")
     if progress is not None and description:
-        task_id = progress.add_task(f"[yellow]{description}", total=None)
+        task_id = progress.add_task(description, total=None)
 
     # Use temporary files instead of PIPE to avoid deadlocks on large command output.
     with tempfile.TemporaryFile() as stdout_tmp, tempfile.TemporaryFile() as stderr_tmp:
@@ -91,7 +91,7 @@ def run_command(cmd, progress=None, description=None, env=None, timeout=300):
                 elapsed = int(now - started)
                 emit_log(progress, f"[cmd] running: {description} elapsed={elapsed}s", style="bright_black")
                 if progress is not None and task_id is not None:
-                    progress.update(task_id, description=f"[yellow]{description} (elapsed {elapsed}s)")
+                    progress.update(task_id, description=f"{description} (elapsed {elapsed}s)")
                 last_heartbeat = now
             time.sleep(0.2)
 
@@ -489,13 +489,23 @@ def _ansi_wrap(text, style):
     return f"{prefix}{text}\033[0m"
 
 
+def _minimal_style(style, message):
+    msg = message.upper()
+    if "[ERROR]" in msg or "[FATAL]" in msg:
+        return "red"
+    if "[WARN]" in msg:
+        return "yellow"
+    return None
+
+
 def emit_log(progress, message, style=None):
     stamp = datetime.now().strftime("%H:%M:%S")
     full_message = f"[{stamp}] {message}"
+    eff_style = _minimal_style(style, message)
     if progress is not None and hasattr(progress, "console"):
-        progress.console.print(full_message, style=style)
+        progress.console.print(full_message, style=eff_style)
     else:
-        print(_ansi_wrap(full_message, style))
+        print(_ansi_wrap(full_message, eff_style))
 
 
 def _emit(progress, message, style=None):
@@ -509,6 +519,54 @@ def _run_range_text(run_files):
     return f"{runs[0]}-{runs[-1]}"
 
 
+def _first_selected_file(source):
+    run_files = source.get("run_files", {})
+    for run in sorted(run_files.keys()):
+        files = run_files.get(run, [])
+        if files:
+            return str(files[0])
+    return "-"
+
+
+def _build_era_summary_table(era_sources):
+    headers = ["era", "runs", "files", "run_range", "lumi_fb", "lumi_src", "dataset_or_file"]
+    rows = []
+
+    for era in sorted(era_sources.keys()):
+        src = era_sources[era]
+        lumi_val = src.get("lumi_fb")
+        lumi_txt = f"{float(lumi_val):.3f}" if lumi_val is not None else "-"
+        dataset_or_file = src.get("dataset") or _first_selected_file(src)
+        rows.append(
+            [
+                str(era),
+                str(src.get("n_runs", "-")),
+                str(src.get("n_files_selected", "-")),
+                str(src.get("run_range_selected", "n/a")),
+                lumi_txt,
+                str(src.get("lumi_source", "-")),
+                str(dataset_or_file),
+            ]
+        )
+
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, val in enumerate(row):
+            widths[i] = max(widths[i], len(val))
+
+    def fmt(row_vals):
+        return " | ".join(val.ljust(widths[i]) for i, val in enumerate(row_vals))
+
+    sep = "-+-".join("-" * w for w in widths)
+    lines = [
+        fmt(headers),
+        sep,
+    ]
+    for row in rows:
+        lines.append(fmt(row))
+    return lines
+
+
 def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False, progress=None):
     redirector = era_cfg.get("xrootd_redirector", cfg.get("xrootd_redirector", DEFAULT_XROOTD_REDIRECTOR))
     run_req = era_cfg.get("run_requirement", era_cfg.get("run-requirement"))
@@ -519,7 +577,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     run_files = defaultdict(list)
     stage_task = None
     if progress is not None:
-        stage_task = progress.add_task(f"[white]{era}: resolve inputs", total=4)
+        stage_task = progress.add_task(f"{era}: resolve inputs", total=4)
 
     # Legacy single-file mode (kept for backward compatibility).
     if "file" in era_cfg:
@@ -556,7 +614,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     das_instance = era_cfg.get("das_instance")
     if dataset:
         if progress is not None and stage_task is not None:
-            progress.update(stage_task, description=f"[white]{era}: querying DAS")
+            progress.update(stage_task, description=f"{era}: querying DAS")
         das_files = query_das_files(dataset=dataset, instance=das_instance, progress=progress)
         known_mapped = 0
         unresolved_pfns = []
@@ -582,7 +640,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
             map_task = None
             if progress is not None:
                 map_task = progress.add_task(
-                    f"[yellow]{era}: map files -> runs (0/{len(unresolved_pfns)})",
+                    f"{era}: map files -> runs (0/{len(unresolved_pfns)})",
                     total=len(unresolved_pfns),
                 )
             last_report = time.time()
@@ -614,7 +672,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
                         if processed == 1 or processed == len(unresolved_pfns) or processed % 10 == 0:
                             progress.update(
                                 map_task,
-                                description=f"[yellow]{era}: map files -> runs ({processed}/{len(unresolved_pfns)})",
+                                description=f"{era}: map files -> runs ({processed}/{len(unresolved_pfns)})",
                             )
                         progress.update(map_task, advance=1)
                     else:
@@ -648,7 +706,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     if not run_files:
         raise RuntimeError(f"Era {era}: no inputs found. Provide one of: file / files / run_files / DAS(das).")
     if progress is not None and stage_task is not None:
-        progress.update(stage_task, advance=1, description=f"[white]{era}: applying filters")
+        progress.update(stage_task, advance=1, description=f"{era}: applying filters")
 
     golden_json_source = era_cfg.get("golden_json", cfg.get("golden_json"))
     golden_runs = None
@@ -675,7 +733,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     if not selected_run_files:
         raise RuntimeError(f"Era {era}: no runs left after run_requirement/golden_json filters.")
     if progress is not None and stage_task is not None:
-        progress.update(stage_task, advance=1, description=f"[white]{era}: lumi estimation")
+        progress.update(stage_task, advance=1, description=f"{era}: lumi estimation")
 
     selected_lumisections = 0
     if run_to_ls:
@@ -704,7 +762,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
             if lumi_fb is not None:
                 lumi_source = "brilcalc"
     if progress is not None and stage_task is not None:
-        progress.update(stage_task, advance=1, description=f"[white]{era}: finalizing")
+        progress.update(stage_task, advance=1, description=f"{era}: finalizing")
 
     out = {
         "era": era,
@@ -724,7 +782,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
         "golden_json_source": golden_json_source,
     }
     if progress is not None and stage_task is not None:
-        progress.update(stage_task, advance=1, description=f"[white]{era}: done")
+        progress.update(stage_task, advance=1, description=f"{era}: done")
     return out
 
 
@@ -735,14 +793,14 @@ def prepare_era_sources(cfg, config_dir, strict=False, progress=None):
 
     task_id = None
     if progress is not None:
-        task_id = progress.add_task("[cyan]Resolving eras", total=len(era_items))
+        task_id = progress.add_task("Resolving eras", total=len(era_items))
 
     total_runs_selected = 0
     total_files_selected = 0
 
     for era, era_cfg in era_items:
         if progress is not None and task_id is not None:
-            progress.update(task_id, description=f"[cyan]Resolving eras ({era})")
+            progress.update(task_id, description=f"Resolving eras ({era})")
 
         source = resolve_era_source(
             era=era,
@@ -797,6 +855,9 @@ def prepare_era_sources(cfg, config_dir, strict=False, progress=None):
         f"[resolve][summary] eras={len(era_items)}, selected runs={total_runs_selected}, selected files={total_files_selected}",
         style="bold blue",
     )
+    _emit(progress, "[resolve] era summary table:", style=None)
+    for line in _build_era_summary_table(out):
+        _emit(progress, line, style=None)
 
     return out
 

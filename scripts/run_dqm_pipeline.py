@@ -73,7 +73,7 @@ def progress_context(enabled=True):
         return
 
     with Progress(
-        SpinnerColumn(style="bold cyan"),
+        SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TaskProgressColumn(),
@@ -117,7 +117,7 @@ def main():
 
         module_task = None
         if progress is not None:
-            module_task = progress.add_task("[green]Running modules", total=len(modules_to_run))
+            module_task = progress.add_task("Running modules", total=len(modules_to_run))
 
         for module_name in modules_to_run:
             emit_log(progress, f"[pipeline] module start: {module_name}", style="green")

@@ -18,6 +18,15 @@ from dqm_pipeline.core import (
 MODULE_NAME = "tnp_efficiency"
 
 
+def default_bins_for_original_behavior(axis, numerator_name):
+    axis = str(axis).lower()
+    if axis == "eta":
+        return [-2.5 + i * 0.5 for i in range(11)]
+    if "Single" in numerator_name:
+        return [0, 5, 10, 15, 20, 30, 40, 50, 80, 120, 200]
+    return [0, 10, 20, 30, 40, 50, 120]
+
+
 def build_tnp_hist_names(resonance, job, tag):
     tagging_type = job.get("tagging_type", "pat")
     probe_type = job.get("probe_type", "pat")
@@ -161,7 +170,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
         emit_log(progress, f"[{MODULE_NAME}] job start: {job_name}", style="blue")
         tags = job.get("tags", [])
         axis = job.get("axis", "pt").lower()
-        bins = job.get("bins", bins_cfg.get(axis))
+        default_bins = bins_cfg.get(axis)
         rebin_factor = int(job.get("rebin", default_rebin))
 
         all_results[job_name] = {}
@@ -172,6 +181,9 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
         for tag in tags:
             emit_log(progress, f"[{MODULE_NAME}] tag start: {job_name}/{tag}", style="blue")
             target_dir, num_name, den_name = build_tnp_hist_names(resonance, job, tag)
+            bins = job.get("bins", default_bins)
+            if bins is None:
+                bins = default_bins_for_original_behavior(axis=axis, numerator_name=num_name)
             all_results[job_name][tag] = {}
             per_era_points = {}
             era_task = None
@@ -234,7 +246,10 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         progress.update(era_task, advance=1)
 
             mc_points = None
-            if job.get("include_mc", False) and mc_file:
+            include_mc_for_this_tag = bool(job.get("include_mc", False)) and (
+                len(tags) == 1 or bool(job.get("include_mc_when_multiple_tags", False))
+            )
+            if include_mc_for_this_tag and mc_file:
                 try:
                     if "{run}" in path_template:
                         if mc_run_number is None:

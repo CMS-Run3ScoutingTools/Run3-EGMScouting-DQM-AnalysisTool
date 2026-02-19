@@ -36,14 +36,18 @@ def model_mass(x, bkg_amp, bkg_slope, cb_amp, cb_alpha, cb_n, cb_mean, cb_sigma)
     return bkg_amp * np.exp(bkg_slope * x) + crystal_ball(x, cb_alpha, cb_n, cb_mean, cb_sigma, cb_amp)
 
 
-def extract_points_from_hist(hist, xmin, xmax):
+def extract_points_from_hist(hist, xmin, xmax, error_model="sqrt_y"):
     x_vals, y_vals, y_errs = [], [], []
     for i_bin in range(1, hist.GetNbinsX() + 1):
         x = hist.GetBinCenter(i_bin)
         y = hist.GetBinContent(i_bin)
         if y > 0 and xmin < x < xmax:
-            err = hist.GetBinError(i_bin)
-            if err <= 0:
+            if error_model == "hist":
+                err = hist.GetBinError(i_bin)
+                if err <= 0:
+                    err = np.sqrt(max(y, 0.0))
+            else:
+                # Original script behavior.
                 err = np.sqrt(max(y, 0.0))
             x_vals.append(x)
             y_vals.append(y)
@@ -52,7 +56,7 @@ def extract_points_from_hist(hist, xmin, xmax):
     return np.asarray(x_vals), np.asarray(y_vals), np.asarray(y_errs)
 
 
-def extract_points_with_target_nbins(hist, xmin, xmax, target_nbins):
+def extract_points_with_target_nbins(hist, xmin, xmax, target_nbins, error_model="sqrt_y"):
     if int(target_nbins) <= 0:
         raise RuntimeError(f"target_nbins must be > 0, got {target_nbins}")
 
@@ -69,8 +73,11 @@ def extract_points_with_target_nbins(hist, xmin, xmax, target_nbins):
         idx = np.searchsorted(edges, x, side="right") - 1
         if idx < 0 or idx >= n_bins:
             continue
-        err = hist.GetBinError(i_bin)
-        if err <= 0:
+        if error_model == "hist":
+            err = hist.GetBinError(i_bin)
+            if err <= 0:
+                err = np.sqrt(max(y, 0.0))
+        else:
             err = np.sqrt(max(y, 0.0))
         sums[idx] += y
         errs2[idx] += err * err
@@ -81,13 +88,14 @@ def extract_points_with_target_nbins(hist, xmin, xmax, target_nbins):
     return centers[mask], sums[mask], errs[mask]
 
 
-def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, target_nbins=None):
+def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, target_nbins=None, error_model="sqrt_y"):
     if target_nbins is not None:
         x_vals, y_vals, y_errs = extract_points_with_target_nbins(
             hist=hist,
             xmin=xmin,
             xmax=xmax,
             target_nbins=int(target_nbins),
+            error_model=error_model,
         )
     else:
         fit_hist = hist
@@ -101,6 +109,7 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
             hist=fit_hist,
             xmin=xmin,
             xmax=xmax,
+            error_model=error_model,
         )
 
     if len(x_vals) < 7:
@@ -129,8 +138,8 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     sig_curve = crystal_ball(x_fit, *popt[3:7], popt[2])
     tot_curve = bkg_curve + sig_curve
 
-    bkg_integral = float(np.trapezoid(bkg_curve, x_fit))
-    sig_integral = float(np.trapezoid(sig_curve, x_fit))
+    bkg_integral = float(np.trapz(bkg_curve, x_fit))
+    sig_integral = float(np.trapz(sig_curve, x_fit))
 
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.errorbar(x_vals, y_vals, yerr=y_errs, fmt="ko", label="Data", markersize=3)
@@ -138,7 +147,7 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     ax.plot(x_fit, bkg_curve, color="brown", label="Background")
     ax.plot(x_fit, sig_curve, color="cyan", label="Signal (Crystal Ball)")
     ax.set_xlabel("Dielectron mass [GeV]")
-    ax.set_ylabel("Events / bin")
+    ax.set_ylabel("Events / 1 GeV")
     ax.grid()
     ax.legend()
 
@@ -222,12 +231,13 @@ def plot_mass_overlay(variable, era_hists, era_sources, out_png, scale_mode="non
 def plot_mass_by_era(results_by_era, out_png, ymin, ymax, title):
     eras = list(results_by_era.keys())
     masses = [results_by_era[e]["mass"]["value"] for e in eras]
-    mass_errs = [results_by_era[e]["mass"]["err"] for e in eras]
+    # Keep original plotting behavior: "fitted error" came from width fit error.
+    mass_errs = [results_by_era[e]["width"]["err"] for e in eras]
     widths = [results_by_era[e]["width"]["value"] for e in eras]
 
     fig, ax = plt.subplots(figsize=(8, 4.8))
-    ax.errorbar(eras, masses, yerr=mass_errs, color="tab:red", fmt="s", capsize=4, label="Fitted mass")
-    ax.errorbar(eras, masses, yerr=widths, color="tab:blue", fmt="o", capsize=3, label="Mass +/- fitted width")
+    ax.errorbar(eras, masses, yerr=widths, color="tab:blue", fmt="s", capsize=4, label="Fitted mass (w width)")
+    ax.errorbar(eras, masses, yerr=mass_errs, color="tab:red", fmt="s", capsize=4, label="Fitted mass (w fitted error)")
     ax.set_ylabel("Mass [GeV]")
     ax.set_ylim(ymin, ymax)
     ax.set_title(title)
@@ -249,6 +259,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     variables = section["variables"]
     hist_tpl = section["hist_path_template"]
     default_rebin = int(section.get("rebin", 1))
+    error_model = section.get("error_model", "sqrt_y")  # sqrt_y | hist
     overlay_rebin = int(section.get("overlay_rebin", default_rebin))
     overlay_scale_mode = section.get("overlay_scale", "none")
 
@@ -313,6 +324,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         out_png=str(fit_png),
                         rebin_factor=win_rebin,
                         target_nbins=win_nbins,
+                        error_model=error_model,
                     )
                     fit_binning = (
                         {"mode": "nbins", "value": win_nbins}
