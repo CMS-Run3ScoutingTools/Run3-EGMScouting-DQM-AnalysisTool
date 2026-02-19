@@ -23,6 +23,22 @@ def run_module(cfg, era_sources, out_root, strict=False):
 
 Then register it in `scripts/dqm_pipeline/modules/__init__.py`.
 
+## Environment
+
+Load project environment (LCG + PYTHONPATH):
+
+```bash
+source env.sh
+```
+
+`env.sh` sources:
+
+```bash
+/cvmfs/sft.cern.ch/lcg/views/LCG_102b/x86_64-centos9-gcc11-opt/setup.sh
+```
+
+After loading, run pipeline commands normally.
+
 ## Input model (new)
 
 `eras` are resolved from DAS datasets (no hardcoded `file`, no fixed `run_number`):
