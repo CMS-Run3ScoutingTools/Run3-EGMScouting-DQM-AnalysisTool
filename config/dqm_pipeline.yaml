@@ -5,7 +5,7 @@ output_dir: plot_DQM2026_check
 # Shared golden JSON (can be overridden per era).
 # Supports local file path or URL, e.g.
 # https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions25/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions25_13p6TeV_Latest.json
-golden_json: config/Cert_Run2025_Golden.json
+golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions25/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions25_13p6TeV_Latest.json
 
 # Optional: estimate lumi_fb automatically with brilcalc.
 lumi:
@@ -21,17 +21,17 @@ eras:
   eraG:
     DAS: /ScoutingPFMonitor/Run2025G-PromptReco-v1/DQMIO
     # Optional: omit run-requirement to use all runs from DAS (then golden_json filter still applies).
-    run-requirement:
-      min: 398000
-      max: 398999
-      # before: 398288
-      # after: 398120
+#    run-requirement:
+#      min: 398000
+#      max: 398999
+#      # before: 398288
+#      # after: 398120
 
-  eraH:
-    DAS: /ScoutingPFMonitor/Run2025H-PromptReco-v1/DQMIO
-    run-requirement:
-      min: 399000
-      max: 399999
+  eraF:
+    DAS: /ScoutingPFMonitor/Run2025F-PromptReco-v1/DQMIO
+#    run-requirement:
+#      min: 399000
+#      max: 399999
 
 mass_fit:
   enabled: true
