@@ -34,7 +34,7 @@ source env.sh
 `env.sh` sources:
 
 ```bash
-/cvmfs/sft.cern.ch/lcg/views/LCG_102b/x86_64-centos9-gcc11-opt/setup.sh
+/cvmfs/sft.cern.ch/lcg/views/LCG_105b/x86_64-el9-gcc13-opt/setup.sh
 ```
 
 After loading, run pipeline commands normally.

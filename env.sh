@@ -11,7 +11,7 @@ fi
 export DQM_PIPELINE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # LCG runtime (ROOT, PyROOT, scientific stack)
-LCG_SETUP="/cvmfs/sft.cern.ch/lcg/views/LCG_102b/x86_64-centos9-gcc11-opt/setup.sh"
+LCG_SETUP="/cvmfs/sft.cern.ch/lcg/views/LCG_105b/x86_64-el9-gcc13-opt/setup.sh"
 if [[ ! -f "${LCG_SETUP}" ]]; then
   echo "[env][ERROR] LCG setup not found: ${LCG_SETUP}"
   return 1

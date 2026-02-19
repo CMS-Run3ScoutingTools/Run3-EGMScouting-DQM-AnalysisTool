@@ -59,33 +59,48 @@ def run_command(cmd, progress=None, description=None, env=None, timeout=300):
     if progress is not None and description:
         task_id = progress.add_task(f"[yellow]{description}", total=None)
 
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=env,
-    )
+    # Use temporary files instead of PIPE to avoid deadlocks on large command output.
+    with tempfile.TemporaryFile() as stdout_tmp, tempfile.TemporaryFile() as stderr_tmp:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=stdout_tmp,
+            stderr=stderr_tmp,
+            env=env,
+        )
 
-    heartbeat_sec = 20
-    last_heartbeat = time.time()
-    while True:
-        rc = proc.poll()
-        if rc is not None:
-            break
-        now = time.time()
-        if now - started > timeout:
-            proc.kill()
-            stdout, stderr = proc.communicate()
-            if progress is not None and task_id is not None:
-                progress.remove_task(task_id)
-            raise subprocess.TimeoutExpired(cmd=cmd, timeout=timeout, output=stdout, stderr=stderr)
-        if progress is None and description and (now - last_heartbeat) >= heartbeat_sec:
-            print(f"[cmd] running: {description} elapsed={int(now - started)}s")
-            last_heartbeat = now
-        time.sleep(0.2)
+        heartbeat_sec = 20
+        last_heartbeat = time.time()
+        while True:
+            rc = proc.poll()
+            if rc is not None:
+                break
 
-    stdout, stderr = proc.communicate()
+            now = time.time()
+            if now - started > timeout:
+                proc.kill()
+                proc.wait()
+                stdout_tmp.seek(0)
+                stderr_tmp.seek(0)
+                stdout = stdout_tmp.read().decode("utf-8", errors="replace")
+                stderr = stderr_tmp.read().decode("utf-8", errors="replace")
+                if progress is not None and task_id is not None:
+                    progress.remove_task(task_id)
+                raise subprocess.TimeoutExpired(cmd=cmd, timeout=timeout, output=stdout, stderr=stderr)
+
+            if description and (now - last_heartbeat) >= heartbeat_sec:
+                elapsed = int(now - started)
+                emit_log(progress, f"[cmd] running: {description} elapsed={elapsed}s", style="bright_black")
+                if progress is not None and task_id is not None:
+                    progress.update(task_id, description=f"[yellow]{description} (elapsed {elapsed}s)")
+                last_heartbeat = now
+            time.sleep(0.2)
+
+        proc.wait()
+        stdout_tmp.seek(0)
+        stderr_tmp.seek(0)
+        stdout = stdout_tmp.read().decode("utf-8", errors="replace")
+        stderr = stderr_tmp.read().decode("utf-8", errors="replace")
+
     if progress is not None and task_id is not None:
         progress.remove_task(task_id)
     elapsed = time.time() - started
@@ -313,6 +328,7 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
 
     brilcalc_bin = lumi_cfg.get("brilcalc_bin", "brilcalc")
     brilcalc_env = lumi_cfg.get("brilcalc_env")
+    brilcalc_timeout = int(lumi_cfg.get("timeout_sec", 600))
     unit = lumi_cfg.get("unit", "/fb")
     calibration = lumi_cfg.get("calibration", "web")
     normtag = lumi_cfg.get("normtag")
@@ -361,7 +377,7 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
                 ["bash", "--noprofile", "--norc", "-lc", shell_cmd],
                 progress=progress,
                 description=f"brilcalc (era={era}, sourced env)",
-                timeout=300,
+                timeout=brilcalc_timeout,
                 env=run_env,
             )
             proc = True
@@ -370,7 +386,7 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
                 cmd,
                 progress=progress,
                 description=f"brilcalc (era={era})",
-                timeout=300,
+                timeout=brilcalc_timeout,
                 env=run_env,
             )
             proc = True
@@ -387,7 +403,7 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
                     cmd,
                     progress=progress,
                     description=f"brilcalc retry without sourcing (era={era})",
-                    timeout=300,
+                    timeout=brilcalc_timeout,
                     env=run_env,
                 )
                 proc = True
