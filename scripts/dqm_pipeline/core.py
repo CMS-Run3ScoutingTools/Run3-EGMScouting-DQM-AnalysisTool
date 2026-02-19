@@ -5,11 +5,13 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 from datetime import datetime
 import time
 from array import array
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import urlopen
@@ -117,7 +119,7 @@ def query_das_files(dataset, instance=None, progress=None):
     return files
 
 
-def query_run_for_file(file_pfn, instance=None, progress=None):
+def query_run_for_file(file_pfn, instance=None):
     if shutil.which("dasgoclient") is None:
         return None
 
@@ -126,15 +128,17 @@ def query_run_for_file(file_pfn, instance=None, progress=None):
         query += f" instance={instance}"
 
     try:
-        stdout, _ = run_command(
+        proc = subprocess.run(
             ["dasgoclient", "--query", query],
-            progress=progress,
-            description=f"dasgoclient run query ({Path(file_pfn).name})",
+            capture_output=True,
+            text=True,
+            check=True,
             timeout=60,
         )
     except Exception:
         return None
 
+    stdout = proc.stdout
     vals = [line.strip() for line in stdout.splitlines() if line.strip()]
     if not vals:
         return None
@@ -445,13 +449,37 @@ def run_passes_requirement(run, req):
     return True
 
 
+def _ansi_wrap(text, style):
+    if os.environ.get("NO_COLOR"):
+        return text
+    if not sys.stdout.isatty():
+        return text
+
+    style_map = {
+        "yellow": "\033[33m",
+        "cyan": "\033[36m",
+        "green": "\033[32m",
+        "blue": "\033[34m",
+        "magenta": "\033[35m",
+        "bright_black": "\033[90m",
+        "bold blue": "\033[1;34m",
+        "bold green": "\033[1;32m",
+        "bold cyan": "\033[1;36m",
+        "bold magenta": "\033[1;35m",
+    }
+    prefix = style_map.get(style)
+    if not prefix:
+        return text
+    return f"{prefix}{text}\033[0m"
+
+
 def emit_log(progress, message, style=None):
     stamp = datetime.now().strftime("%H:%M:%S")
     full_message = f"[{stamp}] {message}"
     if progress is not None and hasattr(progress, "console"):
         progress.console.print(full_message, style=style)
     else:
-        print(full_message)
+        print(_ansi_wrap(full_message, style))
 
 
 def _emit(progress, message, style=None):
@@ -514,24 +542,87 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
         if progress is not None and stage_task is not None:
             progress.update(stage_task, description=f"[white]{era}: querying DAS")
         das_files = query_das_files(dataset=dataset, instance=das_instance, progress=progress)
-        map_task = None
-        if progress is not None:
-            map_task = progress.add_task(f"[yellow]{era}: map files -> runs", total=len(das_files))
-        unresolved_count = 0
+        known_mapped = 0
+        unresolved_pfns = []
+
         for pfn in das_files:
             run = extract_run_from_name(pfn)
-            if run is None:
-                run = query_run_for_file(pfn, instance=das_instance, progress=None)
-            if run is None:
-                msg = f"Era {era}: cannot resolve run for DAS file '{pfn}'."
-                if strict:
-                    raise RuntimeError(msg)
-                _emit(progress, f"[resolve][WARN] {msg} Skipping file.", style="yellow")
-                unresolved_count += 1
-            else:
+            if run is not None:
                 run_files[run].append(as_root_uri(pfn, redirector))
-            if progress is not None and map_task is not None:
-                progress.update(map_task, advance=1)
+                known_mapped += 1
+            else:
+                unresolved_pfns.append(pfn)
+
+        _emit(
+            progress,
+            f"[resolve] {era}: direct run parsing mapped {known_mapped}/{len(das_files)} files; querying DAS for {len(unresolved_pfns)} unresolved files",
+            style="bright_black",
+        )
+
+        unresolved_count = 0
+        if unresolved_pfns:
+            workers = int(era_cfg.get("das_run_query_workers", cfg.get("das_run_query_workers", 8)))
+            workers = max(1, workers)
+            map_task = None
+            if progress is not None:
+                map_task = progress.add_task(
+                    f"[yellow]{era}: map files -> runs (0/{len(unresolved_pfns)})",
+                    total=len(unresolved_pfns),
+                )
+            last_report = time.time()
+            processed = 0
+
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                future_map = {
+                    pool.submit(query_run_for_file, pfn, das_instance): pfn
+                    for pfn in unresolved_pfns
+                }
+                for fut in as_completed(future_map):
+                    pfn = future_map[fut]
+                    run = None
+                    try:
+                        run = fut.result()
+                    except Exception:
+                        run = None
+
+                    processed += 1
+                    if run is None:
+                        unresolved_count += 1
+                        msg = f"Era {era}: cannot resolve run for DAS file '{pfn}'."
+                        if strict:
+                            raise RuntimeError(msg)
+                    else:
+                        run_files[run].append(as_root_uri(pfn, redirector))
+
+                    if progress is not None and map_task is not None:
+                        if processed == 1 or processed == len(unresolved_pfns) or processed % 10 == 0:
+                            progress.update(
+                                map_task,
+                                description=f"[yellow]{era}: map files -> runs ({processed}/{len(unresolved_pfns)})",
+                            )
+                        progress.update(map_task, advance=1)
+                    else:
+                        now = time.time()
+                        if (
+                            processed == 1
+                            or processed == len(unresolved_pfns)
+                            or (now - last_report) >= 5.0
+                        ):
+                            pct = 100.0 * processed / len(unresolved_pfns)
+                            _emit(
+                                progress,
+                                f"[resolve] {era}: mapping unresolved files {processed}/{len(unresolved_pfns)} ({pct:.1f}%)",
+                                style="bright_black",
+                            )
+                            last_report = now
+
+            if unresolved_count > 0:
+                _emit(
+                    progress,
+                    f"[resolve][WARN] {era}: {unresolved_count} DAS files still unresolved and were skipped",
+                    style="yellow",
+                )
+
         _emit(
             progress,
             f"[resolve] {era}: mapped {len(das_files) - unresolved_count}/{len(das_files)} DAS files to runs",

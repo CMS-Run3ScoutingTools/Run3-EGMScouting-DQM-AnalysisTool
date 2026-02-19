@@ -67,6 +67,8 @@ def resolve_modules(requested):
 def progress_context(enabled=True):
     use_rich = enabled and (Progress is not None)
     if not use_rich:
+        if enabled and Progress is None:
+            print("[pipeline][WARN] rich is not available; using plain text progress output.")
         yield None
         return
 
