@@ -1,5 +1,6 @@
 import json
 import hashlib
+import os
 import re
 import shlex
 import shutil
@@ -223,6 +224,34 @@ def convert_lumi_to_fb(value, unit):
     return value * scale_to_fb[unit]
 
 
+def build_brilcalc_env(lumi_cfg):
+    # Run brilcalc in a cleaned subprocess env to avoid clashes with LCG/venv python vars.
+    if not bool(lumi_cfg.get("clean_env", True)):
+        return None
+
+    env = dict(os.environ)
+    unset_defaults = {
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "PYTHONUSERBASE",
+        "PYTHONNOUSERSITE",
+        "VIRTUAL_ENV",
+        "CONDA_PREFIX",
+        "CONDA_DEFAULT_ENV",
+        "__PYVENV_LAUNCHER__",
+    }
+    for key in unset_defaults:
+        env.pop(key, None)
+
+    for key in lumi_cfg.get("unset_env_vars", []):
+        env.pop(str(key), None)
+
+    if not env.get("PATH"):
+        env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    return env
+
+
 def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cfg, strict=False):
     if not selected_runs:
         return None
@@ -232,6 +261,7 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
     unit = lumi_cfg.get("unit", "/fb")
     calibration = lumi_cfg.get("calibration", "web")
     normtag = lumi_cfg.get("normtag")
+    run_env = build_brilcalc_env(lumi_cfg)
 
     begin_run = min(selected_runs)
     end_run = max(selected_runs)
@@ -255,15 +285,20 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
     if normtag:
         cmd.extend(["--normtag", normtag])
 
+    proc = None
+    source_attempt_error = None
+
+    # Attempt 1: run with optional brilws env sourcing from config.
     try:
         if brilcalc_env:
             shell_cmd = f"source {shlex.quote(brilcalc_env)} && " + " ".join(shlex.quote(x) for x in cmd)
             proc = subprocess.run(
-                ["bash", "-lc", shell_cmd],
+                ["bash", "--noprofile", "--norc", "-lc", shell_cmd],
                 capture_output=True,
                 text=True,
                 check=True,
                 timeout=300,
+                env=run_env,
             )
         else:
             proc = subprocess.run(
@@ -272,11 +307,39 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
                 text=True,
                 check=True,
                 timeout=300,
+                env=run_env,
             )
+    except subprocess.CalledProcessError as exc:
+        source_attempt_error = exc
     except Exception as exc:
-        msg = f"[lumi][WARN] era={era}: brilcalc failed ({exc})"
+        source_attempt_error = exc
+
+    # Attempt 2: if source-based attempt failed with "command not found", retry current shell env.
+    if proc is None and isinstance(source_attempt_error, subprocess.CalledProcessError):
+        if source_attempt_error.returncode == 127 and brilcalc_env:
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=300,
+                    env=run_env,
+                )
+            except Exception:
+                pass
+
+    if proc is None:
+        err_text = ""
+        if isinstance(source_attempt_error, subprocess.CalledProcessError):
+            stderr_txt = (source_attempt_error.stderr or "").strip()
+            if stderr_txt:
+                err_text = f" stderr={stderr_txt}"
+            if source_attempt_error.returncode == 127:
+                err_text += " hint=brilcalc not found in shell PATH (or after sourcing brilws-env)."
+        msg = f"[lumi][WARN] era={era}: brilcalc failed ({source_attempt_error}){err_text}"
         if strict:
-            raise RuntimeError(msg) from exc
+            raise RuntimeError(msg) from source_attempt_error
         print(msg)
         return None
 
@@ -341,6 +404,9 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
         run_req = {}
 
     run_files = defaultdict(list)
+    stage_task = None
+    if progress is not None:
+        stage_task = progress.add_task(f"[white]{era}: resolve inputs", total=4)
 
     # Legacy single-file mode (kept for backward compatibility).
     if "file" in era_cfg:
@@ -376,6 +442,8 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     dataset = era_cfg.get("das", era_cfg.get("DAS"))
     das_instance = era_cfg.get("das_instance")
     if dataset:
+        if progress is not None and stage_task is not None:
+            progress.update(stage_task, description=f"[white]{era}: querying DAS")
         das_files = query_das_files(dataset=dataset, instance=das_instance)
         for pfn in das_files:
             run = extract_run_from_name(pfn)
@@ -391,6 +459,8 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
 
     if not run_files:
         raise RuntimeError(f"Era {era}: no inputs found. Provide one of: file / files / run_files / DAS(das).")
+    if progress is not None and stage_task is not None:
+        progress.update(stage_task, advance=1, description=f"[white]{era}: applying filters")
 
     golden_json_source = era_cfg.get("golden_json", cfg.get("golden_json"))
     golden_runs = None
@@ -416,6 +486,8 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
 
     if not selected_run_files:
         raise RuntimeError(f"Era {era}: no runs left after run_requirement/golden_json filters.")
+    if progress is not None and stage_task is not None:
+        progress.update(stage_task, advance=1, description=f"[white]{era}: lumi estimation")
 
     selected_lumisections = 0
     if run_to_ls:
@@ -442,8 +514,10 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
             )
             if lumi_fb is not None:
                 lumi_source = "brilcalc"
+    if progress is not None and stage_task is not None:
+        progress.update(stage_task, advance=1, description=f"[white]{era}: finalizing")
 
-    return {
+    out = {
         "era": era,
         "run_files": selected_run_files,
         "n_runs": len(selected_run_files),
@@ -460,6 +534,9 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
         "dataset": dataset,
         "golden_json_source": golden_json_source,
     }
+    if progress is not None and stage_task is not None:
+        progress.update(stage_task, advance=1, description=f"[white]{era}: done")
+    return out
 
 
 def prepare_era_sources(cfg, config_dir, strict=False, progress=None):

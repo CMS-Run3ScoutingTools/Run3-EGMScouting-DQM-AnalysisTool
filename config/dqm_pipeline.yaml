@@ -10,6 +10,7 @@ golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions2
 # Optional: estimate lumi_fb automatically with brilcalc.
 lumi:
   use_brilcalc: true
+  clean_env: true  # run brilcalc in a cleaned subprocess env (recommended)
   brilcalc_env: /cvmfs/cms-bril.cern.ch/cms-lumi-pog/brilws-docker/brilws-env
   brilcalc_bin: brilcalc
   calibration: web

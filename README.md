@@ -57,6 +57,7 @@ If `lumi.use_brilcalc: true`, `lumi_fb` is estimated automatically per era using
 - selected runs from DAS + run filters
 - golden JSON
 - `brilcalc` output (`--output-style csv`)
+- clean subprocess env by default (`lumi.clean_env: true`) to avoid Python env conflicts
 
 When `golden_json` is a URL, the pipeline downloads it and materializes a local temp JSON automatically for `brilcalc -i`.
 
