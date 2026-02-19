@@ -3,6 +3,8 @@ resonance: resonanceZ
 output_dir: plot_DQM2026_check
 
 # Shared golden JSON (can be overridden per era).
+# Supports local file path or URL, e.g.
+# https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions25/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions25_13p6TeV_Latest.json
 golden_json: config/Cert_Run2025_Golden.json
 
 # Optional: estimate lumi_fb automatically with brilcalc.

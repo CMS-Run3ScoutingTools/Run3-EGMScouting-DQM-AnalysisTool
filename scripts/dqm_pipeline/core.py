@@ -1,11 +1,15 @@
 import json
+import hashlib
 import re
 import shlex
 import shutil
 import subprocess
+import tempfile
 from array import array
 from collections import defaultdict
 from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import urlopen
 
 import ROOT
 
@@ -27,6 +31,11 @@ def resolve_path(path_str, base_dir):
     if path.is_absolute():
         return str(path)
     return str((base_dir / path).resolve())
+
+
+def is_http_url(value):
+    parsed = urlparse(str(value))
+    return parsed.scheme in ("http", "https")
 
 
 def as_root_uri(path_str, redirector):
@@ -110,12 +119,24 @@ def count_lumisections(ls_ranges):
     return total
 
 
-def load_golden_json(golden_json_path, cache):
-    if golden_json_path in cache:
-        return cache[golden_json_path]
+def load_golden_json(golden_json_source, cache):
+    if golden_json_source in cache:
+        cached = cache[golden_json_source]
+        return cached["run_to_ls"], cached["local_json_path"]
 
-    with open(golden_json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    if is_http_url(golden_json_source):
+        with urlopen(golden_json_source, timeout=120) as resp:
+            raw = resp.read().decode("utf-8")
+        data = json.loads(raw)
+
+        digest = hashlib.sha256(golden_json_source.encode("utf-8")).hexdigest()[:16]
+        local_json_path = str(Path(tempfile.gettempdir()) / f"dqm_golden_{digest}.json")
+        with open(local_json_path, "w", encoding="utf-8") as out:
+            json.dump(data, out)
+    else:
+        with open(golden_json_source, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        local_json_path = golden_json_source
 
     run_to_ls = {}
     for run_str, ls_ranges in data.items():
@@ -125,8 +146,11 @@ def load_golden_json(golden_json_path, cache):
             continue
         run_to_ls[run] = count_lumisections(ls_ranges)
 
-    cache[golden_json_path] = run_to_ls
-    return run_to_ls
+    cache[golden_json_source] = {
+        "run_to_ls": run_to_ls,
+        "local_json_path": local_json_path,
+    }
+    return run_to_ls, local_json_path
 
 
 def parse_brilcalc_csv(stdout_text, selected_runs):
@@ -354,12 +378,14 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     if not run_files:
         raise RuntimeError(f"Era {era}: no inputs found. Provide one of: file / files / run_files / DAS(das).")
 
-    golden_json_path = era_cfg.get("golden_json", cfg.get("golden_json"))
+    golden_json_source = era_cfg.get("golden_json", cfg.get("golden_json"))
     golden_runs = None
     run_to_ls = {}
-    if golden_json_path:
-        golden_json_path = resolve_path(golden_json_path, config_dir)
-        run_to_ls = load_golden_json(golden_json_path, golden_cache)
+    golden_json_for_brilcalc = None
+    if golden_json_source:
+        if not is_http_url(golden_json_source):
+            golden_json_source = resolve_path(golden_json_source, config_dir)
+        run_to_ls, golden_json_for_brilcalc = load_golden_json(golden_json_source, golden_cache)
         golden_runs = set(run_to_ls.keys())
 
     selected_run_files = {}
@@ -383,7 +409,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     lumi_cfg = cfg.get("lumi", {})
     use_brilcalc = bool(lumi_cfg.get("use_brilcalc", False) or era_cfg.get("lumi_from_brilcalc", False))
     if lumi_fb is None and use_brilcalc:
-        if not golden_json_path:
+        if not golden_json_for_brilcalc:
             msg = f"[lumi][WARN] era={era}: use_brilcalc=true but no golden_json provided."
             if strict:
                 raise RuntimeError(msg)
@@ -392,7 +418,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
             lumi_fb = estimate_lumi_fb_with_brilcalc(
                 era=era,
                 selected_runs=sorted(selected_run_files.keys()),
-                golden_json_path=golden_json_path,
+                golden_json_path=golden_json_for_brilcalc,
                 lumi_cfg=lumi_cfg,
                 strict=strict,
             )

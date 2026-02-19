@@ -29,7 +29,7 @@ Then register it in `scripts/dqm_pipeline/modules/__init__.py`.
 
 - `DAS`: dataset path, e.g. `/ScoutingPFMonitor/Run2025G-PromptReco-v1/DQMIO`
 - `run-requirement` (optional): supports `before`, `after`, `min`, `max`, `include`, `exclude`
-- `golden_json`: local JSON for run filtering (global or era-specific)
+- `golden_json`: local JSON path or `http(s)` URL for run filtering (global or era-specific)
 
 The script extracts run numbers from DQMIO filenames, filters runs, and aggregates histograms across selected runs per era.
 
@@ -41,6 +41,8 @@ If `lumi.use_brilcalc: true`, `lumi_fb` is estimated automatically per era using
 - selected runs from DAS + run filters
 - golden JSON
 - `brilcalc` output (`--output-style csv`)
+
+When `golden_json` is a URL, the pipeline downloads it and materializes a local temp JSON automatically for `brilcalc -i`.
 
 ## Mass Window Binning
 
