@@ -6,6 +6,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime
 from array import array
 from collections import defaultdict
 from pathlib import Path
@@ -47,13 +48,14 @@ def as_root_uri(path_str, redirector):
     return path_str
 
 
-def query_das_files(dataset, instance=None):
+def query_das_files(dataset, instance=None, progress=None):
     if shutil.which("dasgoclient") is None:
         raise RuntimeError("dasgoclient not found in PATH. Needed for DAS dataset resolution.")
 
     query = f"file dataset={dataset}"
     if instance:
         query += f" instance={instance}"
+    emit_log(progress, f"[resolve] DAS query: {query}", style="bright_black")
 
     proc = subprocess.run(
         ["dasgoclient", "--query", query],
@@ -66,6 +68,7 @@ def query_das_files(dataset, instance=None):
     files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
     if not files:
         raise RuntimeError(f"No files found from DAS query: {query}")
+    emit_log(progress, f"[resolve] DAS returned {len(files)} files", style="bright_black")
     return files
 
 
@@ -120,12 +123,13 @@ def count_lumisections(ls_ranges):
     return total
 
 
-def load_golden_json(golden_json_source, cache):
+def load_golden_json(golden_json_source, cache, progress=None):
     if golden_json_source in cache:
         cached = cache[golden_json_source]
         return cached["run_to_ls"], cached["local_json_path"]
 
     if is_http_url(golden_json_source):
+        emit_log(progress, f"[resolve] Downloading golden JSON from URL: {golden_json_source}", style="bright_black")
         with urlopen(golden_json_source, timeout=120) as resp:
             raw = resp.read().decode("utf-8")
         data = json.loads(raw)
@@ -134,7 +138,9 @@ def load_golden_json(golden_json_source, cache):
         local_json_path = str(Path(tempfile.gettempdir()) / f"dqm_golden_{digest}.json")
         with open(local_json_path, "w", encoding="utf-8") as out:
             json.dump(data, out)
+        emit_log(progress, f"[resolve] Cached golden JSON to: {local_json_path}", style="bright_black")
     else:
+        emit_log(progress, f"[resolve] Loading golden JSON from local file: {golden_json_source}", style="bright_black")
         with open(golden_json_source, "r", encoding="utf-8") as f:
             data = json.load(f)
         local_json_path = golden_json_source
@@ -151,6 +157,7 @@ def load_golden_json(golden_json_source, cache):
         "run_to_ls": run_to_ls,
         "local_json_path": local_json_path,
     }
+    emit_log(progress, f"[resolve] Golden JSON contains {len(run_to_ls)} runs", style="bright_black")
     return run_to_ls, local_json_path
 
 
@@ -284,6 +291,8 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
     ]
     if normtag:
         cmd.extend(["--normtag", normtag])
+    cmd_text = " ".join(shlex.quote(x) for x in cmd)
+    print(f"[lumi] era={era} running brilcalc: {cmd_text}")
 
     proc = None
     source_attempt_error = None
@@ -291,7 +300,13 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
     # Attempt 1: run with optional brilws env sourcing from config.
     try:
         if brilcalc_env:
-            shell_cmd = f"source {shlex.quote(brilcalc_env)} && " + " ".join(shlex.quote(x) for x in cmd)
+            cmd_text = " ".join(shlex.quote(x) for x in cmd)
+            shell_cmd = (
+                "set -e\n"
+                "shopt -s expand_aliases\n"
+                f"source {shlex.quote(brilcalc_env)}\n"
+                f"eval {shlex.quote(cmd_text)}\n"
+            )
             proc = subprocess.run(
                 ["bash", "--noprofile", "--norc", "-lc", shell_cmd],
                 capture_output=True,
@@ -351,7 +366,9 @@ def estimate_lumi_fb_with_brilcalc(era, selected_runs, golden_json_path, lumi_cf
         print(msg)
         return None
 
-    return convert_lumi_to_fb(recorded_in_unit, unit)
+    lumi_fb = convert_lumi_to_fb(recorded_in_unit, unit)
+    print(f"[lumi] era={era} recorded={recorded_in_unit:.6g} {unit} => {lumi_fb:.6g} /fb")
+    return lumi_fb
 
 
 def run_passes_requirement(run, req):
@@ -382,11 +399,17 @@ def run_passes_requirement(run, req):
     return True
 
 
-def _emit(progress, message, style=None):
+def emit_log(progress, message, style=None):
+    stamp = datetime.now().strftime("%H:%M:%S")
+    full_message = f"[{stamp}] {message}"
     if progress is not None and hasattr(progress, "console"):
-        progress.console.print(message, style=style)
+        progress.console.print(full_message, style=style)
     else:
-        print(message)
+        print(full_message)
+
+
+def _emit(progress, message, style=None):
+    emit_log(progress, message, style=style)
 
 
 def _run_range_text(run_files):
@@ -444,7 +467,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     if dataset:
         if progress is not None and stage_task is not None:
             progress.update(stage_task, description=f"[white]{era}: querying DAS")
-        das_files = query_das_files(dataset=dataset, instance=das_instance)
+        das_files = query_das_files(dataset=dataset, instance=das_instance, progress=progress)
         for pfn in das_files:
             run = extract_run_from_name(pfn)
             if run is None:
@@ -469,7 +492,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     if golden_json_source:
         if not is_http_url(golden_json_source):
             golden_json_source = resolve_path(golden_json_source, config_dir)
-        run_to_ls, golden_json_for_brilcalc = load_golden_json(golden_json_source, golden_cache)
+        run_to_ls, golden_json_for_brilcalc = load_golden_json(golden_json_source, golden_cache, progress=progress)
         golden_runs = set(run_to_ls.keys())
 
     selected_run_files = {}
@@ -631,8 +654,13 @@ def load_histogram(file_path, hist_path):
 def aggregate_histogram_for_era(era, source, hist_path_template, fmt_args, strict=False):
     merged = None
     used_runs = []
+    runs = sorted(source["run_files"].keys())
+    files_total = sum(len(v) for v in source["run_files"].values())
+    print(
+        f"[aggregate] era={era} start runs={len(runs)} files={files_total} template='{hist_path_template}' args={fmt_args}"
+    )
 
-    for run in sorted(source["run_files"].keys()):
+    for i_run, run in enumerate(runs, start=1):
         hist_path = hist_path_template.format(run=run, **fmt_args)
         run_has_hist = False
 
@@ -654,7 +682,9 @@ def aggregate_histogram_for_era(era, source, hist_path_template, fmt_args, stric
 
         if run_has_hist:
             used_runs.append(run)
-
+        if i_run == 1 or i_run % 25 == 0 or i_run == len(runs):
+            print(f"[aggregate] era={era} progress runs={i_run}/{len(runs)} used_runs={len(used_runs)}")
+    print(f"[aggregate] era={era} done used_runs={len(used_runs)}/{len(runs)}")
     return merged, used_runs
 
 
