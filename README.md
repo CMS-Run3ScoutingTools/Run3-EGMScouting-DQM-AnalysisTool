@@ -79,6 +79,13 @@ Run all enabled modules:
 python3 scripts/run_dqm_pipeline.py --config config/dqm_pipeline.yaml
 ```
 
+If `rich` is installed, running will show progress bars automatically.
+Disable it with:
+
+```bash
+python3 scripts/run_dqm_pipeline.py --config config/dqm_pipeline.yaml --no-progress
+```
+
 Run one module:
 
 ```bash

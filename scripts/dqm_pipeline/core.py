@@ -435,11 +435,16 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     }
 
 
-def prepare_era_sources(cfg, config_dir, strict=False):
+def prepare_era_sources(cfg, config_dir, strict=False, progress=None):
     golden_cache = {}
     out = {}
+    era_items = list(cfg["eras"].items())
 
-    for era, era_cfg in cfg["eras"].items():
+    task_id = None
+    if progress is not None:
+        task_id = progress.add_task("[cyan]Resolving eras", total=len(era_items))
+
+    for era, era_cfg in era_items:
         source = resolve_era_source(
             era=era,
             era_cfg=era_cfg,
@@ -458,6 +463,8 @@ def prepare_era_sources(cfg, config_dir, strict=False):
             norm_text = "no lumi normalization"
 
         print(f"[resolve] {era}: runs={source['n_runs']}, {norm_text}")
+        if progress is not None and task_id is not None:
+            progress.update(task_id, advance=1)
 
     return out
 

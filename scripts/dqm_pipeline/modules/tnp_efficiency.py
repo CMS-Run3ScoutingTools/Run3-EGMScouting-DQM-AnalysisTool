@@ -124,7 +124,7 @@ def plot_tnp_efficiency(job, tag, per_era_points, out_png, mc_points=None):
     plt.close(fig)
 
 
-def run_module(cfg, era_sources, out_root, strict=False):
+def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     section = cfg.get(MODULE_NAME)
     if not section or not section.get("enabled", True):
         return {}
@@ -146,6 +146,10 @@ def run_module(cfg, era_sources, out_root, strict=False):
     mc_run_number = section.get("mc_run_number")
 
     all_results = {}
+    job_task = None
+    if progress is not None:
+        job_task = progress.add_task(f"[blue]{MODULE_NAME}: jobs", total=len(jobs))
+
     for job in jobs:
         job_name = job["name"]
         tags = job.get("tags", [])
@@ -154,13 +158,23 @@ def run_module(cfg, era_sources, out_root, strict=False):
         rebin_factor = int(job.get("rebin", default_rebin))
 
         all_results[job_name] = {}
+        tag_task = None
+        if progress is not None:
+            tag_task = progress.add_task(f"[blue]{MODULE_NAME}: {job_name} tags", total=len(tags))
 
         for tag in tags:
             target_dir, num_name, den_name = build_tnp_hist_names(resonance, job, tag)
             all_results[job_name][tag] = {}
             per_era_points = {}
+            era_task = None
+            era_items = list(era_sources.items())
+            if progress is not None:
+                era_task = progress.add_task(
+                    f"[blue]{MODULE_NAME}: {job_name}/{tag} eras",
+                    total=len(era_items),
+                )
 
-            for era, source in era_sources.items():
+            for era, source in era_items:
                 try:
                     num_hist, used_runs_num = aggregate_histogram_for_era(
                         era=era,
@@ -207,6 +221,9 @@ def run_module(cfg, era_sources, out_root, strict=False):
                     print(f"[{MODULE_NAME}][WARN] job={job_name} tag={tag} era={era}: {exc}")
                     if strict:
                         raise
+                finally:
+                    if progress is not None and era_task is not None:
+                        progress.update(era_task, advance=1)
 
             mc_points = None
             if job.get("include_mc", False) and mc_file:
@@ -258,6 +275,10 @@ def run_module(cfg, era_sources, out_root, strict=False):
                     out_png=str(out_png),
                     mc_points=mc_points,
                 )
+            if progress is not None and tag_task is not None:
+                progress.update(tag_task, advance=1)
+        if progress is not None and job_task is not None:
+            progress.update(job_task, advance=1)
 
     summary_file = out_dir / "tnp_efficiency_summary.yaml"
     with open(summary_file, "w", encoding="utf-8") as f:

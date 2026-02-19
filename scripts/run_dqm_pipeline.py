@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+from contextlib import contextmanager
 from pathlib import Path
 
 import ROOT
@@ -8,6 +9,19 @@ import mplhep as hep
 
 from dqm_pipeline.core import build_output_root, prepare_era_sources
 from dqm_pipeline.modules import MODULE_REGISTRY
+
+try:
+    from rich.progress import (
+        BarColumn,
+        MofNCompleteColumn,
+        Progress,
+        TaskProgressColumn,
+        TextColumn,
+        TimeElapsedColumn,
+        TimeRemainingColumn,
+    )
+except Exception:
+    Progress = None
 
 
 def parse_args():
@@ -21,6 +35,7 @@ def parse_args():
     )
     parser.add_argument("--strict", action="store_true", help="Fail immediately on missing input/hist.")
     parser.add_argument("--resolve-only", action="store_true", help="Resolve eras/runs/files and exit.")
+    parser.add_argument("--no-progress", action="store_true", help="Disable rich progress bar.")
     return parser.parse_args()
 
 
@@ -47,6 +62,24 @@ def resolve_modules(requested):
     return sorted(modules)
 
 
+@contextmanager
+def progress_context(enabled=True):
+    use_rich = enabled and (Progress is not None)
+    if not use_rich:
+        yield None
+        return
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+    ) as progress:
+        yield progress
+
+
 def main():
     args = parse_args()
     config_path = Path(args.config).resolve()
@@ -59,23 +92,36 @@ def main():
     out_root = build_output_root(cfg)
     out_root.mkdir(parents=True, exist_ok=True)
 
-    era_sources = prepare_era_sources(cfg=cfg, config_dir=config_dir, strict=args.strict)
-
-    if args.resolve_only:
-        print("[pipeline] resolve-only mode done.")
-        return
-
-    combined_summary = {}
-    modules_to_run = resolve_modules(args.module)
-
-    for module_name in modules_to_run:
-        runner = MODULE_REGISTRY[module_name]
-        combined_summary[module_name] = runner(
+    with progress_context(enabled=not args.no_progress) as progress:
+        era_sources = prepare_era_sources(
             cfg=cfg,
-            era_sources=era_sources,
-            out_root=out_root,
+            config_dir=config_dir,
             strict=args.strict,
+            progress=progress,
         )
+
+        if args.resolve_only:
+            print("[pipeline] resolve-only mode done.")
+            return
+
+        combined_summary = {}
+        modules_to_run = resolve_modules(args.module)
+
+        module_task = None
+        if progress is not None:
+            module_task = progress.add_task("[green]Running modules", total=len(modules_to_run))
+
+        for module_name in modules_to_run:
+            runner = MODULE_REGISTRY[module_name]
+            combined_summary[module_name] = runner(
+                cfg=cfg,
+                era_sources=era_sources,
+                out_root=out_root,
+                strict=args.strict,
+                progress=progress,
+            )
+            if progress is not None and module_task is not None:
+                progress.update(module_task, advance=1)
 
     summary_file = out_root / "pipeline_summary.yaml"
     with open(summary_file, "w", encoding="utf-8") as f:

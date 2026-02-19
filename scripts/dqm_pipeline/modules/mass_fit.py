@@ -240,7 +240,7 @@ def plot_mass_by_era(results_by_era, out_png, ymin, ymax, title):
     plt.close(fig)
 
 
-def run_module(cfg, era_sources, out_root, strict=False):
+def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     section = cfg.get(MODULE_NAME)
     if not section or not section.get("enabled", True):
         return {}
@@ -256,11 +256,19 @@ def run_module(cfg, era_sources, out_root, strict=False):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     all_results = {}
+    var_task = None
+    if progress is not None:
+        var_task = progress.add_task(f"[magenta]{MODULE_NAME}: variables", total=len(variables))
+
     for variable in variables:
         era_hists = {}
         variable_results = {w: {} for w in fit_windows}
+        era_task = None
+        era_items = list(era_sources.items())
+        if progress is not None:
+            era_task = progress.add_task(f"[magenta]{MODULE_NAME}: {variable} eras", total=len(era_items))
 
-        for era, source in era_sources.items():
+        for era, source in era_items:
             try:
                 hist, used_runs = aggregate_histogram_for_era(
                     era=era,
@@ -316,6 +324,9 @@ def run_module(cfg, era_sources, out_root, strict=False):
                 print(f"[{MODULE_NAME}][WARN] era={era} variable={variable}: {exc}")
                 if strict:
                     raise
+            finally:
+                if progress is not None and era_task is not None:
+                    progress.update(era_task, advance=1)
 
         if era_hists:
             overlay_png = out_dir / f"overlay_{sanitize(variable)}.png"
@@ -341,6 +352,8 @@ def run_module(cfg, era_sources, out_root, strict=False):
             )
 
         all_results[variable] = variable_results
+        if progress is not None and var_task is not None:
+            progress.update(var_task, advance=1)
 
     summary_file = out_dir / "mass_fit_summary.yaml"
     with open(summary_file, "w", encoding="utf-8") as f:
