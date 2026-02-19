@@ -1,0 +1,350 @@
+from pathlib import Path
+
+import yaml
+import numpy as np
+import matplotlib.pyplot as plt
+import mplhep as hep
+from scipy.optimize import curve_fit
+from scipy.special import erf
+
+from dqm_pipeline.core import aggregate_histogram_for_era, sanitize
+
+
+MODULE_NAME = "mass_fit"
+
+
+def crystal_ball(x, alpha, n, mean, sigma, amp):
+    x = np.asarray(x)
+    t = (x - mean) / sigma
+    abs_alpha = max(abs(alpha), 1e-3)
+    n = max(n, 1.01)
+
+    a_term = (n / abs_alpha) ** n * np.exp(-0.5 * abs_alpha**2)
+    b_term = n / abs_alpha - abs_alpha
+    c_term = n / abs_alpha / (n - 1.0) * np.exp(-0.5 * abs_alpha**2)
+    d_term = np.sqrt(np.pi / 2.0) * (1.0 + erf(abs_alpha / np.sqrt(2.0)))
+    norm = 1.0 / (sigma * (c_term + d_term))
+
+    out = np.zeros_like(t)
+    mask = t > -abs_alpha
+    out[mask] = np.exp(-0.5 * t[mask] ** 2)
+    out[~mask] = a_term * np.power(b_term - t[~mask], -n)
+    return amp * norm * out
+
+
+def model_mass(x, bkg_amp, bkg_slope, cb_amp, cb_alpha, cb_n, cb_mean, cb_sigma):
+    return bkg_amp * np.exp(bkg_slope * x) + crystal_ball(x, cb_alpha, cb_n, cb_mean, cb_sigma, cb_amp)
+
+
+def extract_points_from_hist(hist, xmin, xmax):
+    x_vals, y_vals, y_errs = [], [], []
+    for i_bin in range(1, hist.GetNbinsX() + 1):
+        x = hist.GetBinCenter(i_bin)
+        y = hist.GetBinContent(i_bin)
+        if y > 0 and xmin < x < xmax:
+            err = hist.GetBinError(i_bin)
+            if err <= 0:
+                err = np.sqrt(max(y, 0.0))
+            x_vals.append(x)
+            y_vals.append(y)
+            y_errs.append(err)
+
+    return np.asarray(x_vals), np.asarray(y_vals), np.asarray(y_errs)
+
+
+def extract_points_with_target_nbins(hist, xmin, xmax, target_nbins):
+    if int(target_nbins) <= 0:
+        raise RuntimeError(f"target_nbins must be > 0, got {target_nbins}")
+
+    n_bins = int(target_nbins)
+    edges = np.linspace(float(xmin), float(xmax), n_bins + 1)
+    sums = np.zeros(n_bins, dtype=float)
+    errs2 = np.zeros(n_bins, dtype=float)
+
+    for i_bin in range(1, hist.GetNbinsX() + 1):
+        x = hist.GetBinCenter(i_bin)
+        y = hist.GetBinContent(i_bin)
+        if y <= 0 or x <= xmin or x >= xmax:
+            continue
+        idx = np.searchsorted(edges, x, side="right") - 1
+        if idx < 0 or idx >= n_bins:
+            continue
+        err = hist.GetBinError(i_bin)
+        if err <= 0:
+            err = np.sqrt(max(y, 0.0))
+        sums[idx] += y
+        errs2[idx] += err * err
+
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    errs = np.sqrt(errs2)
+    mask = sums > 0
+    return centers[mask], sums[mask], errs[mask]
+
+
+def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, target_nbins=None):
+    if target_nbins is not None:
+        x_vals, y_vals, y_errs = extract_points_with_target_nbins(
+            hist=hist,
+            xmin=xmin,
+            xmax=xmax,
+            target_nbins=int(target_nbins),
+        )
+    else:
+        fit_hist = hist
+        if int(rebin_factor) > 1:
+            fit_hist = hist.Clone(
+                f"{hist.GetName()}_{sanitize(era)}_fit_rebin_{int(rebin_factor)}_{sanitize(str(xmin))}_{sanitize(str(xmax))}"
+            )
+            fit_hist.SetDirectory(0)
+            fit_hist.Rebin(int(rebin_factor))
+        x_vals, y_vals, y_errs = extract_points_from_hist(
+            hist=fit_hist,
+            xmin=xmin,
+            xmax=xmax,
+        )
+
+    if len(x_vals) < 7:
+        raise RuntimeError(f"Not enough points to fit in [{xmin}, {xmax}] for era {era}.")
+
+    p0 = [1e6, 0.0, 2e5, 1.5, 3.0, 0.5 * (xmin + xmax), 1.0]
+    bounds = (
+        [0.0, -1.0, 0.0, 0.5, 1.0, xmin, 0.01],
+        [np.inf, 1.0, np.inf, 5.0, 20.0, xmax, 10.0],
+    )
+
+    popt, pcov = curve_fit(
+        model_mass,
+        x_vals,
+        y_vals,
+        p0=p0,
+        sigma=y_errs,
+        absolute_sigma=True,
+        maxfev=10000,
+        bounds=bounds,
+    )
+    perr = np.sqrt(np.diag(pcov))
+
+    x_fit = np.linspace(x_vals.min(), x_vals.max(), 1000)
+    bkg_curve = popt[0] * np.exp(popt[1] * x_fit)
+    sig_curve = crystal_ball(x_fit, *popt[3:7], popt[2])
+    tot_curve = bkg_curve + sig_curve
+
+    bkg_integral = float(np.trapezoid(bkg_curve, x_fit))
+    sig_integral = float(np.trapezoid(sig_curve, x_fit))
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.errorbar(x_vals, y_vals, yerr=y_errs, fmt="ko", label="Data", markersize=3)
+    ax.plot(x_fit, tot_curve, "m-", label="Signal + Background")
+    ax.plot(x_fit, bkg_curve, color="brown", label="Background")
+    ax.plot(x_fit, sig_curve, color="cyan", label="Signal (Crystal Ball)")
+    ax.set_xlabel("Dielectron mass [GeV]")
+    ax.set_ylabel("Events / bin")
+    ax.grid()
+    ax.legend()
+
+    hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
+    hep.cms.lumitext(f"Run3 {era} {era_label} (13.6 TeV)", ax=ax)
+
+    ax.text(0.03, 0.84, f"Bkg integral: {bkg_integral:.0f}", transform=ax.transAxes, fontsize=10)
+    ax.text(0.03, 0.78, f"Signal integral: {sig_integral:.0f}", transform=ax.transAxes, fontsize=10)
+    ax.text(0.03, 0.72, f"Mean: {popt[5]:.2f} GeV", transform=ax.transAxes, fontsize=10)
+    ax.text(0.03, 0.66, f"Sigma: {popt[6]:.2f} GeV", transform=ax.transAxes, fontsize=10)
+    ax.text(0.03, 0.60, f"Relative width: {100.0 * popt[6] / popt[5]:.2f}%", transform=ax.transAxes, fontsize=10)
+
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=140)
+    plt.close(fig)
+
+    names = ["bkg_amp", "bkg_slope", "cb_amp", "cb_alpha", "cb_n", "cb_mean", "cb_sigma"]
+    out = {}
+    for name, val, err in zip(names, popt, perr):
+        out[name] = {"value": float(val), "err": float(err)}
+    out["background_integral"] = bkg_integral
+    out["signal_integral"] = sig_integral
+    return out
+
+
+def era_label_for_plots(source):
+    if source.get("lumi_fb") is not None:
+        return f"{float(source['lumi_fb']):.2f} fb$^{{-1}}$"
+    if source.get("selected_lumisections", 0) > 0:
+        return f"{source['n_runs']} runs, {source['selected_lumisections']} golden LS"
+    return f"{source['n_runs']} runs"
+
+
+def overlay_scale_value(source, mode):
+    if mode == "lumi_fb":
+        val = source.get("lumi_fb")
+        return float(val) if val is not None else None
+    if mode == "golden_lumisections":
+        val = source.get("selected_lumisections", 0)
+        return float(val) if val > 0 else None
+    return None
+
+
+def plot_mass_overlay(variable, era_hists, era_sources, out_png, scale_mode="none"):
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for era, hist in era_hists.items():
+        source = era_sources[era]
+        shown = hist.Clone(f"{hist.GetName()}_{sanitize(era)}_overlay")
+        scale = overlay_scale_value(source, scale_mode)
+        if scale is not None and scale > 0:
+            shown.Scale(1.0 / scale)
+
+        x = np.array([shown.GetBinCenter(i) for i in range(1, shown.GetNbinsX() + 1)])
+        y = np.array([shown.GetBinContent(i) for i in range(1, shown.GetNbinsX() + 1)])
+        mask = (x > 0) & (y > 0)
+
+        ax.step(x[mask], y[mask], where="mid", linewidth=1.6, label=f"{era} [{era_label_for_plots(source)}]")
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("M$_{ee}$ [GeV]")
+
+    if scale_mode == "lumi_fb":
+        ax.set_ylabel("Events / fb")
+    elif scale_mode == "golden_lumisections":
+        ax.set_ylabel("Events / golden LS")
+    else:
+        ax.set_ylabel("Events")
+
+    ax.set_title(variable)
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(fontsize=9)
+    hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
+    hep.cms.lumitext("2025 (13.6 TeV)", ax=ax)
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=140)
+    plt.close(fig)
+
+
+def plot_mass_by_era(results_by_era, out_png, ymin, ymax, title):
+    eras = list(results_by_era.keys())
+    masses = [results_by_era[e]["mass"]["value"] for e in eras]
+    mass_errs = [results_by_era[e]["mass"]["err"] for e in eras]
+    widths = [results_by_era[e]["width"]["value"] for e in eras]
+
+    fig, ax = plt.subplots(figsize=(8, 4.8))
+    ax.errorbar(eras, masses, yerr=mass_errs, color="tab:red", fmt="s", capsize=4, label="Fitted mass")
+    ax.errorbar(eras, masses, yerr=widths, color="tab:blue", fmt="o", capsize=3, label="Mass +/- fitted width")
+    ax.set_ylabel("Mass [GeV]")
+    ax.set_ylim(ymin, ymax)
+    ax.set_title(title)
+    ax.grid(True, which="both", axis="x", linestyle="--", alpha=0.5)
+    ax.legend()
+    hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
+    hep.cms.lumitext("2025 (13.6 TeV)", ax=ax)
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=140)
+    plt.close(fig)
+
+
+def run_module(cfg, era_sources, out_root, strict=False):
+    section = cfg.get(MODULE_NAME)
+    if not section or not section.get("enabled", True):
+        return {}
+
+    fit_windows = section["fit_windows"]
+    variables = section["variables"]
+    hist_tpl = section["hist_path_template"]
+    default_rebin = int(section.get("rebin", 1))
+    overlay_rebin = int(section.get("overlay_rebin", default_rebin))
+    overlay_scale_mode = section.get("overlay_scale", "none")
+
+    out_dir = Path(out_root) / section.get("output_subdir", MODULE_NAME)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    all_results = {}
+    for variable in variables:
+        era_hists = {}
+        variable_results = {w: {} for w in fit_windows}
+
+        for era, source in era_sources.items():
+            try:
+                hist, used_runs = aggregate_histogram_for_era(
+                    era=era,
+                    source=source,
+                    hist_path_template=hist_tpl,
+                    fmt_args={"var": variable},
+                    strict=strict,
+                )
+                if hist is None:
+                    raise RuntimeError("No histogram found in selected runs.")
+
+                hist_for_overlay = hist
+                if overlay_rebin > 1:
+                    hist_for_overlay = hist.Clone(
+                        f"{hist.GetName()}_{sanitize(era)}_overlay_rebin_{overlay_rebin}"
+                    )
+                    hist_for_overlay.SetDirectory(0)
+                    hist_for_overlay.Rebin(overlay_rebin)
+
+                era_hists[era] = hist_for_overlay
+                era_text = era_label_for_plots(source)
+
+                for fit_name, win in fit_windows.items():
+                    win_rebin = int(win.get("rebin", default_rebin))
+                    win_nbins = win.get("nbins")
+                    if win_nbins is not None:
+                        win_nbins = int(win_nbins)
+
+                    fit_png = out_dir / f"{era}_{sanitize(variable)}_{fit_name}.png"
+                    fit_out = fit_histogram(
+                        hist=hist,
+                        xmin=float(win["xmin"]),
+                        xmax=float(win["xmax"]),
+                        era=era,
+                        era_label=era_text,
+                        out_png=str(fit_png),
+                        rebin_factor=win_rebin,
+                        target_nbins=win_nbins,
+                    )
+                    fit_binning = (
+                        {"mode": "nbins", "value": win_nbins}
+                        if win_nbins is not None
+                        else {"mode": "rebin", "value": win_rebin}
+                    )
+                    variable_results[fit_name][era] = {
+                        "mass": fit_out["cb_mean"],
+                        "width": fit_out["cb_sigma"],
+                        "fit_binning": fit_binning,
+                        "used_runs": used_runs,
+                        "full": fit_out,
+                    }
+            except Exception as exc:
+                print(f"[{MODULE_NAME}][WARN] era={era} variable={variable}: {exc}")
+                if strict:
+                    raise
+
+        if era_hists:
+            overlay_png = out_dir / f"overlay_{sanitize(variable)}.png"
+            plot_mass_overlay(
+                variable=variable,
+                era_hists=era_hists,
+                era_sources=era_sources,
+                out_png=str(overlay_png),
+                scale_mode=overlay_scale_mode,
+            )
+
+        for fit_name, era_result in variable_results.items():
+            if not era_result:
+                continue
+            win = fit_windows[fit_name]
+            mass_png = out_dir / f"mass_by_era_{sanitize(variable)}_{fit_name}.png"
+            plot_mass_by_era(
+                results_by_era=era_result,
+                out_png=str(mass_png),
+                ymin=float(win["ymin"]),
+                ymax=float(win["ymax"]),
+                title=f"{variable} [{fit_name}]",
+            )
+
+        all_results[variable] = variable_results
+
+    summary_file = out_dir / "mass_fit_summary.yaml"
+    with open(summary_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump(all_results, f, sort_keys=False)
+
+    print(f"[{MODULE_NAME}] Done. Outputs in {out_dir}")
+    return all_results
