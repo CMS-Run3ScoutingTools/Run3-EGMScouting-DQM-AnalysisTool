@@ -319,7 +319,21 @@ def run_passes_requirement(run, req):
     return True
 
 
-def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False):
+def _emit(progress, message, style=None):
+    if progress is not None and hasattr(progress, "console"):
+        progress.console.print(message, style=style)
+    else:
+        print(message)
+
+
+def _run_range_text(run_files):
+    if not run_files:
+        return "n/a"
+    runs = sorted(run_files.keys())
+    return f"{runs[0]}-{runs[-1]}"
+
+
+def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False, progress=None):
     redirector = era_cfg.get("xrootd_redirector", cfg.get("xrootd_redirector", DEFAULT_XROOTD_REDIRECTOR))
     run_req = era_cfg.get("run_requirement", era_cfg.get("run-requirement"))
     # Optional: if missing/null, no run-based filtering is applied.
@@ -355,7 +369,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
                 msg = f"Era {era}: cannot infer run from file '{file_path}'."
                 if strict:
                     raise RuntimeError(msg)
-                print(f"[resolve][WARN] {msg} Skipping file.")
+                _emit(progress, f"[resolve][WARN] {msg} Skipping file.", style="yellow")
                 continue
             run_files[run].append(as_root_uri(file_path, redirector))
 
@@ -371,7 +385,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
                 msg = f"Era {era}: cannot resolve run for DAS file '{pfn}'."
                 if strict:
                     raise RuntimeError(msg)
-                print(f"[resolve][WARN] {msg} Skipping file.")
+                _emit(progress, f"[resolve][WARN] {msg} Skipping file.", style="yellow")
                 continue
             run_files[run].append(as_root_uri(pfn, redirector))
 
@@ -389,10 +403,14 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
         golden_runs = set(run_to_ls.keys())
 
     selected_run_files = {}
+    excluded_by_run_requirement = 0
+    excluded_by_golden = 0
     for run in sorted(run_files.keys()):
         if not run_passes_requirement(run, run_req):
+            excluded_by_run_requirement += 1
             continue
         if golden_runs is not None and run not in golden_runs:
+            excluded_by_golden += 1
             continue
         selected_run_files[run] = sorted(set(run_files[run]))
 
@@ -413,7 +431,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
             msg = f"[lumi][WARN] era={era}: use_brilcalc=true but no golden_json provided."
             if strict:
                 raise RuntimeError(msg)
-            print(msg)
+            _emit(progress, msg, style="yellow")
         else:
             lumi_fb = estimate_lumi_fb_with_brilcalc(
                 era=era,
@@ -426,12 +444,21 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
                 lumi_source = "brilcalc"
 
     return {
+        "era": era,
         "run_files": selected_run_files,
         "n_runs": len(selected_run_files),
+        "n_runs_discovered": len(run_files),
+        "n_runs_excluded_by_run_requirement": excluded_by_run_requirement,
+        "n_runs_excluded_by_golden": excluded_by_golden,
+        "n_files_discovered": sum(len(v) for v in run_files.values()),
+        "n_files_selected": sum(len(v) for v in selected_run_files.values()),
+        "run_range_discovered": _run_range_text(run_files),
+        "run_range_selected": _run_range_text(selected_run_files),
         "selected_lumisections": selected_lumisections,
         "lumi_fb": lumi_fb,
         "lumi_source": lumi_source,
         "dataset": dataset,
+        "golden_json_source": golden_json_source,
     }
 
 
@@ -444,7 +471,13 @@ def prepare_era_sources(cfg, config_dir, strict=False, progress=None):
     if progress is not None:
         task_id = progress.add_task("[cyan]Resolving eras", total=len(era_items))
 
+    total_runs_selected = 0
+    total_files_selected = 0
+
     for era, era_cfg in era_items:
+        if progress is not None and task_id is not None:
+            progress.update(task_id, description=f"[cyan]Resolving eras ({era})")
+
         source = resolve_era_source(
             era=era,
             era_cfg=era_cfg,
@@ -452,8 +485,11 @@ def prepare_era_sources(cfg, config_dir, strict=False, progress=None):
             config_dir=config_dir,
             golden_cache=golden_cache,
             strict=strict,
+            progress=progress,
         )
         out[era] = source
+        total_runs_selected += int(source["n_runs"])
+        total_files_selected += int(source["n_files_selected"])
 
         if source["lumi_fb"] is not None:
             norm_text = f"lumi_fb={float(source['lumi_fb']):.3f} ({source.get('lumi_source', 'unknown')})"
@@ -462,9 +498,39 @@ def prepare_era_sources(cfg, config_dir, strict=False, progress=None):
         else:
             norm_text = "no lumi normalization"
 
-        print(f"[resolve] {era}: runs={source['n_runs']}, {norm_text}")
+        _emit(
+            progress,
+            (
+                f"[resolve] {era}: runs {source['n_runs_discovered']} -> {source['n_runs']} "
+                f"(run-req -{source['n_runs_excluded_by_run_requirement']}, golden -{source['n_runs_excluded_by_golden']}), "
+                f"files {source['n_files_discovered']} -> {source['n_files_selected']}"
+            ),
+            style="cyan",
+        )
+        _emit(
+            progress,
+            (
+                f"          run range: {source['run_range_selected']} "
+                f"(discovered {source['run_range_discovered']}) | "
+                f"dataset: {source.get('dataset') or 'local files'} | {norm_text}"
+            ),
+            style="green",
+        )
+        if source.get("golden_json_source"):
+            _emit(
+                progress,
+                f"          golden_json: {source['golden_json_source']}",
+                style="bright_black",
+            )
+
         if progress is not None and task_id is not None:
             progress.update(task_id, advance=1)
+
+    _emit(
+        progress,
+        f"[resolve][summary] eras={len(era_items)}, selected runs={total_runs_selected}, selected files={total_files_selected}",
+        style="bold blue",
+    )
 
     return out
 
