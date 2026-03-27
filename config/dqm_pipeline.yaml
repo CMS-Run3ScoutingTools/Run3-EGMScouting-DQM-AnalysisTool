@@ -19,9 +19,9 @@ lumi:
 # Era inputs now come from DAS datasets + run filters.
 eras:
   eraA:
-    DAS: /ScoutingPFMonitor/Run2025A-PromptReco-v1/DQMIO
+    DAS: /ScoutingPFMonitor/Run2026A-PromptReco-v1/DQMIO
   eraB:
-    DAS: /ScoutingPFMonitor/Run2025B-PromptReco-v1/DQMIO
+    DAS: /ScoutingPFMonitor/Run2026B-PromptReco-v1/DQMIO
     # Optional: omit run-requirement to use all runs from DAS (then golden_json filter still applies).
 #    run-requirement:
 #      min: 398000
