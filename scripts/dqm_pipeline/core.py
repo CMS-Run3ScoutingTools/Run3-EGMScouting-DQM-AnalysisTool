@@ -101,11 +101,16 @@ def candidate_root_paths(path_str, extra_redirectors=None):
     if extra_redirectors:
         redirectors = list(extra_redirectors) + redirectors
 
-    if path_str.startswith("root://"):
+    # Prefer the exact user-provided path first, especially for local EOS mounts
+    # like /eos/cms/store/... where opening the filesystem path is different from
+    # opening /store/... through XRootD.
+    if path_str not in seen:
         out.append(path_str)
         seen.add(path_str)
 
-    if store_path not in seen:
+    if path_str.startswith("root://"):
+        pass
+    elif store_path not in seen:
         out.append(store_path)
         seen.add(store_path)
 

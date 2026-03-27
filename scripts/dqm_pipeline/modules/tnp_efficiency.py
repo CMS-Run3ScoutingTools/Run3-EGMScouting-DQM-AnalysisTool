@@ -175,6 +175,8 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     plot_lumi_text = global_plot_lumi_text(cfg)
 
     all_results = {}
+    total_successful_eras = 0
+    total_failed_eras = 0
     job_task = None
     if progress is not None:
         job_task = progress.add_task(f"[blue]{MODULE_NAME}: jobs", total=len(jobs))
@@ -188,6 +190,8 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
         rebin_factor = int(job.get("rebin", default_rebin))
 
         all_results[job_name] = {}
+        job_successful_eras = 0
+        job_failed_eras = 0
         tag_task = None
         if progress is not None:
             tag_task = progress.add_task(f"[blue]{MODULE_NAME}: {job_name} tags", total=len(tags))
@@ -199,6 +203,8 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
             if bins is None:
                 bins = default_bins_for_original_behavior(axis=axis, numerator_name=num_name)
             all_results[job_name][tag] = {}
+            tag_successful_eras = 0
+            tag_failed_eras = 0
             per_era_points = {}
             era_task = None
             era_items = list(era_sources.items())
@@ -251,7 +257,9 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         "used_runs_den": used_runs_den,
                         "mean_efficiency": float(np.mean(points["y"])),
                     }
+                    tag_successful_eras += 1
                 except Exception as exc:
+                    tag_failed_eras += 1
                     print(f"[{MODULE_NAME}][WARN] job={job_name} tag={tag} era={era}: {exc}")
                     if strict:
                         raise
@@ -313,10 +321,46 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     mc_points=mc_points,
                     plot_lumi_text=plot_lumi_text,
                 )
-            emit_log(progress, f"[{MODULE_NAME}] tag done: {job_name}/{tag}", style="blue")
+            all_results[job_name][tag]["_status"] = {
+                "status": "ok" if tag_successful_eras > 0 else "empty",
+                "n_successful_eras": tag_successful_eras,
+                "n_failed_eras": tag_failed_eras,
+            }
+            job_successful_eras += tag_successful_eras
+            job_failed_eras += tag_failed_eras
+            total_successful_eras += tag_successful_eras
+            total_failed_eras += tag_failed_eras
+            if tag_successful_eras > 0:
+                emit_log(
+                    progress,
+                    f"[{MODULE_NAME}] tag done: {job_name}/{tag} usable_eras={tag_successful_eras} skipped_eras={tag_failed_eras}",
+                    style="blue",
+                )
+            else:
+                emit_log(
+                    progress,
+                    f"[{MODULE_NAME}][WARN] tag done: {job_name}/{tag} usable_eras=0 skipped_eras={tag_failed_eras}",
+                    style="yellow",
+                )
             if progress is not None and tag_task is not None:
                 progress.update(tag_task, advance=1)
-        emit_log(progress, f"[{MODULE_NAME}] job done: {job_name}", style="blue")
+        all_results[job_name]["_status"] = {
+            "status": "ok" if job_successful_eras > 0 else "empty",
+            "n_successful_eras": job_successful_eras,
+            "n_failed_eras": job_failed_eras,
+        }
+        if job_successful_eras > 0:
+            emit_log(
+                progress,
+                f"[{MODULE_NAME}] job done: {job_name} usable_eras={job_successful_eras} skipped_eras={job_failed_eras}",
+                style="blue",
+            )
+        else:
+            emit_log(
+                progress,
+                f"[{MODULE_NAME}][WARN] job done: {job_name} usable_eras=0 skipped_eras={job_failed_eras}",
+                style="yellow",
+            )
         if progress is not None and job_task is not None:
             progress.update(job_task, advance=1)
 
@@ -324,5 +368,11 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     with open(summary_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(all_results, f, sort_keys=False)
 
-    emit_log(progress, f"[{MODULE_NAME}] done. Outputs in {out_dir}", style="bold blue")
+    final_style = "bold blue" if total_successful_eras > 0 else "yellow"
+    final_tag = "done" if total_successful_eras > 0 else "[WARN] done"
+    emit_log(
+        progress,
+        f"[{MODULE_NAME}] {final_tag}. usable_eras={total_successful_eras} skipped_eras={total_failed_eras} outputs={out_dir}",
+        style=final_style,
+    )
     return all_results

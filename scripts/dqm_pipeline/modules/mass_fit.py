@@ -303,6 +303,8 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     )
 
     all_results = {}
+    total_successful_eras = 0
+    total_failed_eras = 0
     var_task = None
     if progress is not None:
         var_task = progress.add_task(f"[magenta]{MODULE_NAME}: variables", total=len(variables))
@@ -311,6 +313,8 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
         emit_log(progress, f"[{MODULE_NAME}] variable start: {variable}", style="magenta")
         era_hists = {}
         variable_results = {w: {} for w in fit_windows}
+        variable_successful_eras = 0
+        variable_failed_eras = 0
         era_task = None
         era_items = list(era_sources.items())
         if progress is not None:
@@ -372,7 +376,9 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         "used_runs": used_runs,
                         "full": fit_out,
                     }
+                variable_successful_eras += 1
             except Exception as exc:
+                variable_failed_eras += 1
                 print(f"[{MODULE_NAME}][WARN] era={era} variable={variable}: {exc}")
                 if strict:
                     raise
@@ -390,6 +396,12 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                 scale_mode=overlay_scale_mode,
                 plot_lumi_text=summary_lumi_text,
             )
+        else:
+            emit_log(
+                progress,
+                f"[{MODULE_NAME}][WARN] variable={variable}: no usable eras, overlay skipped",
+                style="yellow",
+            )
 
         for fit_name, era_result in variable_results.items():
             if not era_result:
@@ -405,8 +417,26 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                 plot_lumi_text=summary_lumi_text,
             )
 
-        all_results[variable] = variable_results
-        emit_log(progress, f"[{MODULE_NAME}] variable done: {variable}", style="magenta")
+        all_results[variable] = {
+            "status": "ok" if variable_successful_eras > 0 else "empty",
+            "n_successful_eras": variable_successful_eras,
+            "n_failed_eras": variable_failed_eras,
+            "fits": variable_results,
+        }
+        total_successful_eras += variable_successful_eras
+        total_failed_eras += variable_failed_eras
+        if variable_successful_eras > 0:
+            emit_log(
+                progress,
+                f"[{MODULE_NAME}] variable done: {variable} usable_eras={variable_successful_eras} skipped_eras={variable_failed_eras}",
+                style="magenta",
+            )
+        else:
+            emit_log(
+                progress,
+                f"[{MODULE_NAME}][WARN] variable done: {variable} usable_eras=0 skipped_eras={variable_failed_eras}",
+                style="yellow",
+            )
         if progress is not None and var_task is not None:
             progress.update(var_task, advance=1)
 
@@ -414,5 +444,11 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     with open(summary_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(all_results, f, sort_keys=False)
 
-    emit_log(progress, f"[{MODULE_NAME}] done. Outputs in {out_dir}", style="bold magenta")
+    final_style = "bold magenta" if total_successful_eras > 0 else "yellow"
+    final_tag = "done" if total_successful_eras > 0 else "[WARN] done"
+    emit_log(
+        progress,
+        f"[{MODULE_NAME}] {final_tag}. usable_eras={total_successful_eras} skipped_eras={total_failed_eras} outputs={out_dir}",
+        style=final_style,
+    )
     return all_results
