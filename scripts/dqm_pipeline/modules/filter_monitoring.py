@@ -210,6 +210,24 @@ def build_run_trend_hist(points, name_hint):
     return hist
 
 
+def build_legend_marker_proxy(name_hint, color, marker_style, marker_size=1.15):
+    proxy = ROOT.TH1F(sanitize(name_hint), "", 1, 0.0, 1.0)
+    proxy.SetDirectory(0)
+    proxy.SetLineColor(color)
+    proxy.SetMarkerColor(color)
+    proxy.SetMarkerStyle(marker_style)
+    proxy.SetMarkerSize(marker_size)
+    proxy.SetLineWidth(0)
+    return proxy
+
+
+def register_canvas_input(canvas, key, obj):
+    if not hasattr(canvas, "_input_cache"):
+        canvas._input_cache = {}
+    canvas._input_cache[str(key)] = obj
+    return obj
+
+
 def draw_filter_canvas(
     cfg,
     source,
@@ -261,8 +279,10 @@ def draw_filter_canvas(
 
     canvas.cd(1)
     legend = make_compact_legend(0.43, 0.18, 0.93, 0.50, text_size=0.03, ncols=legend_cols)
+    register_canvas_input(canvas, "legend", legend)
 
     set_eff_style(base_eff, ROOT.kBlack, 20, marker_size=1.05, line_style=1)
+    register_canvas_input(canvas, f"base_eff::{base_tag}", base_eff)
     CMS.cmsDraw(base_eff, "P E", lcolor=ROOT.kBlack, mcolor=ROOT.kBlack, msize=1.0, lwidth=2, fstyle=0)
     legend.AddEntry(base_eff, compact_label(base_tag), "PL")
 
@@ -270,6 +290,7 @@ def draw_filter_canvas(
         color = palette[idx % len(palette)]
         marker = marker_styles[idx % len(marker_styles)]
         set_eff_style(eff_abs, color, marker, marker_size=0.95, line_style=2)
+        register_canvas_input(canvas, f"abs_eff::{label}", eff_abs)
         CMS.cmsDraw(eff_abs, "P E", lcolor=color, mcolor=color, msize=0.95, lwidth=2, fstyle=0)
         legend.AddEntry(eff_abs, compact_label(label), "PL")
 
@@ -278,6 +299,7 @@ def draw_filter_canvas(
         color = palette[idx % len(palette)]
         marker = marker_styles[idx % len(marker_styles)]
         set_eff_style(eff_step, color, marker, marker_size=0.95, line_style=1)
+        register_canvas_input(canvas, f"step_eff::{label}", eff_step)
         CMS.cmsDraw(eff_step, "P E", lcolor=color, mcolor=color, msize=0.95, lwidth=2, fstyle=0)
 
     CMS.SaveCanvas(canvas, str(out_base.with_suffix(".png")), close=False)
@@ -326,14 +348,16 @@ def draw_filter_era_comparison_canvas(
         "#a96b59", "#e76300", "#b9ac70", "#717581", "#92dadd",
     ]
     palette = [ROOT.TColor.GetColor(x) for x in palette_hex]
-    marker_styles = [20, 21, 22, 23, 33, 34]
+    marker_styles = [20, 24, 25, 26, 27, 28]
 
     canvas.cd(1)
     legend = make_compact_legend(0.42, 0.62, 0.93, 0.90, text_size=0.020, ncols=legend_cols)
+    register_canvas_input(canvas, "legend", legend)
     for idx, (era_label, eff) in enumerate(abs_by_era.items()):
         color = palette[idx % len(palette)]
         marker = marker_styles[idx % len(marker_styles)]
         set_eff_style(eff, color, marker, marker_size=1.0, line_style=1)
+        register_canvas_input(canvas, f"abs_eff::{era_label}", eff)
         CMS.cmsDraw(eff, "P E", lcolor=color, mcolor=color, msize=1.0, lwidth=2, fstyle=0)
         legend.AddEntry(eff, compact_label(era_label), "PL")
 
@@ -342,6 +366,7 @@ def draw_filter_era_comparison_canvas(
         color = palette[idx % len(palette)]
         marker = marker_styles[idx % len(marker_styles)]
         set_eff_style(eff, color, marker, marker_size=1.0, line_style=1)
+        register_canvas_input(canvas, f"step_eff::{era_label}", eff)
         CMS.cmsDraw(eff, "P E", lcolor=color, mcolor=color, msize=1.0, lwidth=2, fstyle=0)
 
     CMS.SaveCanvas(canvas, str(out_base.with_suffix(".png")), close=False)
@@ -415,6 +440,7 @@ def draw_run_trend_canvas(
     frame.GetYaxis().CenterTitle(True)
 
     legend = make_compact_legend(0.52, 0.17, 0.92, 0.40, text_size=0.028, ncols=1)
+    register_canvas_input(canvas, "legend", legend)
 
     palette_hex = [
         "#3f90da", "#ffa90e", "#bd1f01", "#94a4a2", "#832db6",
@@ -422,6 +448,7 @@ def draw_run_trend_canvas(
     ]
     palette = [ROOT.TColor.GetColor(x) for x in palette_hex]
     marker_styles = [20, 21, 22, 23, 33, 34]
+    legend_proxies = {}
 
     combined_trend_data = {}
     for era_key, filter_map in era_trend_data.items():
@@ -442,18 +469,27 @@ def draw_run_trend_canvas(
         hist.SetLineColor(color)
         hist.SetMarkerColor(color)
         hist.SetMarkerStyle(marker)
-        hist.SetMarkerSize(1.0)
+        hist.SetMarkerSize(1.15)
         hist.SetLineWidth(0)
+        register_canvas_input(canvas, f"trend_hist::{filter_name}", hist)
         CMS.cmsDraw(
             hist,
             "P SAME",
             lcolor=color,
             mcolor=color,
-            msize=1.0,
+            msize=1.15,
             lwidth=0,
             fstyle=0,
         )
-        legend.AddEntry(hist, compact_label(filter_name), "PL")
+        proxy = build_legend_marker_proxy(
+            f"legend_{sanitize(base_tag)}_{sanitize(filter_name)}_{sanitize(title_suffix)}",
+            color=color,
+            marker_style=marker,
+            marker_size=1.15,
+        )
+        legend_proxies[filter_name] = proxy
+        register_canvas_input(canvas, f"legend_proxy::{filter_name}", proxy)
+        legend.AddEntry(proxy, compact_label(filter_name), "P")
 
     era_ranges = []
     for era_key, filter_map in era_trend_data.items():
@@ -474,11 +510,13 @@ def draw_run_trend_canvas(
     boundary_line.SetLineColor(ROOT.kGray + 2)
     boundary_line.SetLineStyle(2)
     boundary_line.SetLineWidth(2)
+    register_canvas_input(canvas, "boundary_line", boundary_line)
 
     era_label = ROOT.TLatex()
     era_label.SetTextFont(42)
     era_label.SetTextSize(0.028)
     era_label.SetTextAlign(22)
+    register_canvas_input(canvas, "era_label", era_label)
 
     for idx, item in enumerate(era_ranges):
         x_center = 0.5 * (item["run_min"] + item["run_max"])
