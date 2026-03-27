@@ -215,7 +215,7 @@ def overlay_scale_value(source, mode):
 
 
 def plot_mass_overlay(variable, era_hists, era_sources, out_png, scale_mode="none", plot_lumi_text="Run 3 (13.6 TeV)"):
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(9.2, 6.0))
 
     for era, hist in era_hists.items():
         source = era_sources[era]
@@ -238,21 +238,58 @@ def plot_mass_overlay(variable, era_hists, era_sources, out_png, scale_mode="non
 
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xlabel("M$_{ee}$ [GeV]")
+    ax.set_xlabel("M$_{ee}$ [GeV]", fontsize=22)
 
     if scale_mode == "lumi_fb":
-        ax.set_ylabel("Events / fb")
+        ax.set_ylabel("Events / fb", fontsize=22)
     elif scale_mode == "golden_lumisections":
-        ax.set_ylabel("Events / golden LS")
+        ax.set_ylabel("Events / golden LS", fontsize=22)
     else:
-        ax.set_ylabel("Events")
+        ax.set_ylabel("Events", fontsize=22)
 
-    ax.set_title(variable)
-    ax.grid(True, which="both", alpha=0.3)
-    ax.legend(fontsize=9)
-    hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
-    hep.cms.lumitext(plot_lumi_text, ax=ax)
-    fig.tight_layout()
+    ax.tick_params(axis="both", which="major", labelsize=16, direction="in", top=True, right=True, length=10)
+    ax.tick_params(axis="both", which="minor", direction="in", top=True, right=True, length=5)
+    ax.grid(True, which="both", alpha=0.25, linestyle=":")
+
+    ax.text(
+        0.00,
+        1.03,
+        "CMS",
+        transform=ax.transAxes,
+        ha="left",
+        va="bottom",
+        fontsize=20,
+        fontweight="bold",
+    )
+    ax.text(
+        0.10,
+        1.03,
+        "Preliminary",
+        transform=ax.transAxes,
+        ha="left",
+        va="bottom",
+        fontsize=17,
+        style="italic",
+    )
+    ax.text(
+        1.00,
+        1.03,
+        plot_lumi_text,
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=14,
+    )
+
+    ax.legend(
+        loc="upper left",
+        bbox_to_anchor=(0.00, 0.97),
+        frameon=False,
+        fontsize=11,
+        handlelength=2.2,
+        labelspacing=0.6,
+    )
+    fig.subplots_adjust(left=0.14, right=0.99, bottom=0.13, top=0.88)
     fig.savefig(out_png, dpi=140)
     plt.close(fig)
 
