@@ -573,7 +573,7 @@ def _first_selected_file(source):
 
 
 def _build_era_summary_table(era_sources):
-    headers = ["era", "runs", "files", "run_range", "lumi_fb", "lumi_src", "dataset_or_file"]
+    headers = ["era", "runs", "files", "run_range", "lumi_fb", "lumi_src", "dataset_or_file", "sample_file"]
     rows = []
 
     for era in sorted(era_sources.keys()):
@@ -581,6 +581,7 @@ def _build_era_summary_table(era_sources):
         lumi_val = src.get("lumi_fb")
         lumi_txt = f"{float(lumi_val):.3f}" if lumi_val is not None else "-"
         dataset_or_file = src.get("dataset") or _first_selected_file(src)
+        sample_file = _first_selected_file(src)
         rows.append(
             [
                 str(era),
@@ -590,6 +591,7 @@ def _build_era_summary_table(era_sources):
                 lumi_txt,
                 str(src.get("lumi_source", "-")),
                 str(dataset_or_file),
+                str(sample_file),
             ]
         )
 
@@ -830,6 +832,12 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
         "dataset": dataset,
         "golden_json_source": golden_json_source,
         "xrootd_redirectors": list(xrootd_redirectors),
+        "abort_after_initial_failed_runs": int(
+            era_cfg.get("abort_after_initial_failed_runs", cfg.get("abort_after_initial_failed_runs", 5))
+        ),
+        "suppress_root_xrd_errors": bool(
+            era_cfg.get("suppress_root_xrd_errors", cfg.get("suppress_root_xrd_errors", True))
+        ),
     }
     if progress is not None and stage_task is not None:
         progress.update(stage_task, advance=1, description=f"{era}: done")
@@ -897,6 +905,13 @@ def prepare_era_sources(cfg, config_dir, strict=False, progress=None):
                 f"          golden_json: {source['golden_json_source']}",
                 style="bright_black",
             )
+        sample_file = _first_selected_file(source)
+        if sample_file != "-":
+            _emit(
+                progress,
+                f"          sample_file: {sample_file}",
+                style=None,
+            )
 
         if progress is not None and task_id is not None:
             progress.update(task_id, advance=1)
@@ -915,24 +930,32 @@ def prepare_era_sources(cfg, config_dir, strict=False, progress=None):
     return out
 
 
-def load_histogram(file_path, hist_path, xrootd_redirectors=None):
+def load_histogram(file_path, hist_path, xrootd_redirectors=None, suppress_root_errors=True):
     errors = []
+    old_error_level = None
+    if suppress_root_errors and hasattr(ROOT, "gErrorIgnoreLevel") and hasattr(ROOT, "kFatal"):
+        old_error_level = ROOT.gErrorIgnoreLevel
+        ROOT.gErrorIgnoreLevel = ROOT.kFatal
 
-    for candidate in candidate_root_paths(file_path, extra_redirectors=xrootd_redirectors):
-        root_file = ROOT.TFile.Open(candidate)
-        if not root_file or root_file.IsZombie():
-            errors.append(f"open failed: {candidate}")
-            continue
+    try:
+        for candidate in candidate_root_paths(file_path, extra_redirectors=xrootd_redirectors):
+            root_file = ROOT.TFile.Open(candidate)
+            if not root_file or root_file.IsZombie():
+                errors.append(f"open failed: {candidate}")
+                continue
 
-        hist = root_file.Get(hist_path)
-        if not hist:
+            hist = root_file.Get(hist_path)
+            if not hist:
+                root_file.Close()
+                raise RuntimeError(f"Missing histogram '{hist_path}' in {candidate}")
+
+            out = hist.Clone()
+            out.SetDirectory(0)
             root_file.Close()
-            raise RuntimeError(f"Missing histogram '{hist_path}' in {candidate}")
-
-        out = hist.Clone()
-        out.SetDirectory(0)
-        root_file.Close()
-        return out
+            return out
+    finally:
+        if old_error_level is not None:
+            ROOT.gErrorIgnoreLevel = old_error_level
 
     err_text = "; ".join(errors[-3:]) if errors else "unknown ROOT open failure"
     raise RuntimeError(f"Cannot open file via ROOT/XRootD: {file_path} | tried={len(errors)} | {err_text}")
@@ -949,19 +972,30 @@ def aggregate_histogram_for_era(era, source, hist_path_template, fmt_args, stric
     total_file_open_failures = 0
     failed_runs = []
     redirectors = source.get("xrootd_redirectors")
+    suppress_root_errors = bool(source.get("suppress_root_xrd_errors", True))
+    abort_after_initial_failed_runs = int(source.get("abort_after_initial_failed_runs", 5))
+    consecutive_failed_runs = 0
 
     for i_run, run in enumerate(runs, start=1):
         hist_path = hist_path_template.format(run=run, **fmt_args)
         run_has_hist = False
         run_open_failures = 0
         run_fail_examples = []
+        first_failed_file = None
 
         for file_path in source["run_files"][run]:
             try:
-                hist = load_histogram(file_path, hist_path, xrootd_redirectors=redirectors)
+                hist = load_histogram(
+                    file_path,
+                    hist_path,
+                    xrootd_redirectors=redirectors,
+                    suppress_root_errors=suppress_root_errors,
+                )
             except Exception as exc:
                 total_file_open_failures += 1
                 run_open_failures += 1
+                if first_failed_file is None:
+                    first_failed_file = file_path
                 if len(run_fail_examples) < 2:
                     run_fail_examples.append(str(exc))
                 if strict:
@@ -977,16 +1011,30 @@ def aggregate_histogram_for_era(era, source, hist_path_template, fmt_args, stric
 
         if run_has_hist:
             used_runs.append(run)
+            consecutive_failed_runs = 0
         elif run_open_failures > 0:
+            consecutive_failed_runs += 1
             failed_runs.append(
                 {
                     "run": run,
                     "n_failures": run_open_failures,
                     "examples": run_fail_examples,
+                    "first_failed_file": first_failed_file,
                 }
             )
         if i_run == 1 or i_run % 25 == 0 or i_run == len(runs):
             print(f"[aggregate] era={era} progress runs={i_run}/{len(runs)} used_runs={len(used_runs)}")
+
+        if (
+            abort_after_initial_failed_runs > 0
+            and not used_runs
+            and consecutive_failed_runs >= abort_after_initial_failed_runs
+        ):
+            print(
+                f"[aggregate][WARN] era={era}: aborting early after {consecutive_failed_runs} consecutive failed runs "
+                f"with no successful ROOT/XRootD opens"
+            )
+            break
 
     if failed_runs:
         print(
@@ -995,8 +1043,10 @@ def aggregate_histogram_for_era(era, source, hist_path_template, fmt_args, stric
         )
         for item in failed_runs[:5]:
             detail = item["examples"][0] if item["examples"] else "no example"
+            failed_file = item["first_failed_file"] or "-"
             print(
-                f"[aggregate][WARN] era={era} run={item['run']}: open_failures={item['n_failures']} example={detail}"
+                f"[aggregate][WARN] era={era} run={item['run']}: open_failures={item['n_failures']} "
+                f"first_failed_file={failed_file} example={detail}"
             )
         if len(failed_runs) > 5:
             print(f"[aggregate][WARN] era={era}: {len(failed_runs) - 5} additional failed runs suppressed")
