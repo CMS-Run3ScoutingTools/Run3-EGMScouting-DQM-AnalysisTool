@@ -629,8 +629,15 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                             run_trend_store[era_key][base_tag]["abs"][filter_name] = abs_points
                             run_trend_store[era_key][base_tag]["step"][filter_name] = step_points
 
+                    base_only = False
                     if not abs_effs:
-                        raise RuntimeError(f"No usable filter histograms found for base tag '{base_tag}'.")
+                        base_only = True
+                        emit_log(
+                            progress,
+                            f"[{MODULE_NAME}] job={job_name} era={era_key} base_tag={base_tag}: "
+                            "no filter-by-filter histograms found, falling back to base-pass-only plot",
+                            style="yellow",
+                        )
 
                     out_base = out_dir / f"{sanitize(job_name)}_{sanitize(era_key)}_{sanitize(base_tag)}"
                     draw_filter_canvas(
@@ -654,6 +661,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         "used_runs_den": base_den_runs,
                         "filters": filter_summary,
                         "n_filters_drawn": len(abs_effs),
+                        "base_only": base_only,
                     }
             except Exception as exc:
                 print(f"[{MODULE_NAME}][WARN] job={job_name} era={era_key}: {exc}")
