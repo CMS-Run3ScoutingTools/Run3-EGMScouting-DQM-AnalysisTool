@@ -1,3 +1,4 @@
+import glob
 import json
 import hashlib
 import os
@@ -41,6 +42,27 @@ def resolve_path(path_str, base_dir):
     if path.is_absolute():
         return str(path)
     return str((base_dir / path).resolve())
+
+
+def expand_path_patterns(path_values, base_dir):
+    expanded = []
+    values = path_values if isinstance(path_values, list) else [path_values]
+
+    for raw in values:
+        path_str = str(raw)
+        resolved = resolve_path(path_str, base_dir) if not is_http_url(path_str) else path_str
+        if glob.has_magic(resolved):
+            expanded.extend(sorted(glob.glob(resolved)))
+        else:
+            expanded.append(resolved)
+
+    seen = set()
+    out = []
+    for item in expanded:
+        if item not in seen:
+            out.append(item)
+            seen.add(item)
+    return out
 
 
 def is_http_url(value):
@@ -573,7 +595,7 @@ def _first_selected_file(source):
 
 
 def _build_era_summary_table(era_sources):
-    headers = ["era", "runs", "files", "run_range", "lumi_fb", "lumi_src", "dataset_or_file", "sample_file"]
+    headers = ["era", "label", "year", "runs", "files", "run_range", "lumi_fb", "lumi_src", "dataset_or_file", "sample_file"]
     rows = []
 
     for era in sorted(era_sources.keys()):
@@ -585,6 +607,8 @@ def _build_era_summary_table(era_sources):
         rows.append(
             [
                 str(era),
+                str(src.get("display_label", era)),
+                str(src.get("data_year", "-") if src.get("data_year") is not None else "-"),
                 str(src.get("n_runs", "-")),
                 str(src.get("n_files_selected", "-")),
                 str(src.get("run_range_selected", "n/a")),
@@ -628,18 +652,24 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     if progress is not None:
         stage_task = progress.add_task(f"{era}: resolve inputs", total=4)
 
-    # Legacy single-file mode (kept for backward compatibility).
+    # Legacy single-file mode and wildcard expansion for local filesystem inputs.
     if "file" in era_cfg:
-        file_path = era_cfg["file"]
-        run = extract_run_from_name(file_path)
-        if run is None:
-            legacy_run = cfg.get("run_number")
-            if legacy_run is None:
-                raise RuntimeError(
-                    f"Era {era}: cannot infer run from file name and no top-level run_number provided."
-                )
-            run = int(legacy_run)
-        run_files[run].append(as_root_uri(file_path, redirector))
+        matched_files = expand_path_patterns(era_cfg["file"], config_dir)
+        if not matched_files:
+            msg = f"Era {era}: no files matched pattern '{era_cfg['file']}'."
+            if strict:
+                raise RuntimeError(msg)
+            _emit(progress, f"[resolve][WARN] {msg}", style="yellow")
+        for file_path in matched_files:
+            run = extract_run_from_name(file_path)
+            if run is None:
+                legacy_run = cfg.get("run_number")
+                if legacy_run is None:
+                    raise RuntimeError(
+                        f"Era {era}: cannot infer run from file name and no top-level run_number provided."
+                    )
+                run = int(legacy_run)
+            run_files[run].append(as_root_uri(file_path, redirector))
 
     if "run_files" in era_cfg:
         for run_key, file_list in era_cfg["run_files"].items():
@@ -649,7 +679,32 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
                 run_files[run].append(as_root_uri(file_path, redirector))
 
     if "files" in era_cfg:
-        for file_path in era_cfg["files"]:
+        matched_files = expand_path_patterns(era_cfg["files"], config_dir)
+        if not matched_files:
+            msg = f"Era {era}: no files matched entries in 'files'."
+            if strict:
+                raise RuntimeError(msg)
+            _emit(progress, f"[resolve][WARN] {msg}", style="yellow")
+        for file_path in matched_files:
+            run = extract_run_from_name(file_path)
+            if run is None:
+                msg = f"Era {era}: cannot infer run from file '{file_path}'."
+                if strict:
+                    raise RuntimeError(msg)
+                _emit(progress, f"[resolve][WARN] {msg} Skipping file.", style="yellow")
+                continue
+            run_files[run].append(as_root_uri(file_path, redirector))
+
+    if "file_glob" in era_cfg:
+        matched_files = expand_path_patterns(era_cfg["file_glob"], config_dir)
+        if not matched_files:
+            msg = f"Era {era}: no files matched file_glob '{era_cfg['file_glob']}'."
+            if strict:
+                raise RuntimeError(msg)
+            _emit(progress, f"[resolve][WARN] {msg}", style="yellow")
+        else:
+            _emit(progress, f"[resolve] {era}: file_glob matched {len(matched_files)} files", style="bright_black")
+        for file_path in matched_files:
             run = extract_run_from_name(file_path)
             if run is None:
                 msg = f"Era {era}: cannot infer run from file '{file_path}'."
@@ -759,7 +814,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     if progress is not None and stage_task is not None:
         progress.update(stage_task, advance=1, description=f"{era}: applying filters")
 
-    golden_json_source = era_cfg.get("golden_json", cfg.get("golden_json"))
+    golden_json_source = era_cfg.get("golden_json")
     golden_runs = None
     run_to_ls = {}
     golden_json_for_brilcalc = None
@@ -817,6 +872,8 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
 
     out = {
         "era": era,
+        "display_label": str(era_cfg.get("label", era)),
+        "data_year": era_cfg.get("year"),
         "run_files": selected_run_files,
         "n_runs": len(selected_run_files),
         "n_runs_discovered": len(run_files),

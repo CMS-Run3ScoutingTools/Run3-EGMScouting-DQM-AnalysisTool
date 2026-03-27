@@ -1,49 +1,45 @@
-tag: EGM_Scouting_DQM_2026_v2
+tag: EGM_Scouting_DQM_mixed_years
 resonance: resonanceZ
-output_dir: plot_DQM2026_check
+output_dir: plot_DQM_compare_years
 
-# Optional: estimate lumi_fb automatically with brilcalc.
+plotting:
+  campaign_label: Run 3
+  lumi_text: Run 3 (13.6 TeV)
+  energy_tev: 13.6
+
 lumi:
   use_brilcalc: true
-  clean_env: true  # run brilcalc in a cleaned subprocess env (recommended)
+  clean_env: true
   brilcalc_env: /cvmfs/cms-bril.cern.ch/cms-lumi-pog/brilws-docker/brilws-env
   brilcalc_bin: brilcalc
   calibration: web
-  unit: /pb  # converted to /fb internally
-  # normtag: /path/to/normtag.json
+  unit: /pb
 
-# Era inputs now come from DAS datasets + run filters.
 eras:
-  2025_eraG:
+  run2025G:
     label: Run2025G
     year: 2025
     golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions25/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions25_13p6TeV_Latest.json
     file_glob: /eos/cms/store/group/comm_dqm/DQMGUI_data/Run2025/ScoutingPFMonitor/*/DQM_*__ScoutingPFMonitor__Run2025G-PromptReco-v1__DQMIO.root
-  2026_eraA:
+
+  run2026A:
     label: Run2026A
     year: 2026
     golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions26/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions26_13p6TeV_Latest.json
     file_glob: /eos/cms/store/group/comm_dqm/DQMGUI_data/Run2026/ScoutingPFMonitor/*/DQM_*__ScoutingPFMonitor__Run2026A-PromptReco-v1__DQMIO.root
-  2026_eraB:
+
+  run2026B:
     label: Run2026B
     year: 2026
     golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions26/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions26_13p6TeV_Latest.json
     file_glob: /eos/cms/store/group/comm_dqm/DQMGUI_data/Run2026/ScoutingPFMonitor/*/DQM_*__ScoutingPFMonitor__Run2026B-PromptReco-v1__DQMIO.root
-    # Optional: omit run-requirement to use all runs from DAS (then golden_json filter still applies).
-#    run-requirement:
-#      min: 398000
-#      max: 398999
-#      # before: 398288
-#      # after: 398120
-#      min: 399000
-#      max: 399999
 
 mass_fit:
   enabled: true
   output_subdir: mass_fit
-  rebin: 1   # default fit rebin for windows that do not specify rebin/nbins
+  rebin: 1
   overlay_rebin: 2
-  overlay_scale: lumi_fb  # none | lumi_fb | golden_lumisections
+  overlay_scale: lumi_fb
   hist_path_template: DQMData/Run {run}/HLT/Run summary/ScoutingOffline/EGamma/Collection/{var}
   variables:
     - sctElectron_EBEB_appliedID_invMass
@@ -54,7 +50,7 @@ mass_fit:
       xmax: 110.0
       ymin: 80.0
       ymax: 100.0
-      nbins: 40  # optional, takes precedence over rebin
+      nbins: 40
     JPsi:
       xmin: 1.0
       xmax: 5.0
@@ -80,17 +76,3 @@ tnp_efficiency:
       region: Barrel
       tags:
         - DST_PFScouting_DoubleEG_v
-        - DST_PFScouting_DoubleEG_v_fireTrigObj
-      include_mc: false
-
-    - name: dst_doubleEG_sct_leading_endcap
-      tagging_type: sct
-      probe_type: sct
-      target_dir: Tag_ScoutingElectron
-      pt_order: leading
-      axis: pt
-      region: Endcap
-      tags:
-        - DST_PFScouting_DoubleEG_v
-        - DST_PFScouting_DoubleEG_v_fireTrigObj
-      include_mc: false

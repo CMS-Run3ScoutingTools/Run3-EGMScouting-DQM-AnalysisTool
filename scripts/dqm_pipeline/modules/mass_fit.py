@@ -13,6 +13,29 @@ from dqm_pipeline.core import aggregate_histogram_for_era, sanitize, emit_log
 MODULE_NAME = "mass_fit"
 
 
+def source_display_label(source):
+    return str(source.get("display_label", source.get("era", "era")))
+
+
+def global_plot_lumi_text(cfg):
+    plotting = cfg.get("plotting", {})
+    if plotting.get("lumi_text"):
+        return str(plotting["lumi_text"])
+    energy = plotting.get("energy_tev", cfg.get("energy_tev", 13.6))
+    campaign = plotting.get("campaign_label", cfg.get("campaign_label", "Run 3"))
+    return f"{campaign} ({energy} TeV)"
+
+
+def source_plot_lumi_text(cfg, source):
+    if source.get("plot_lumi_text"):
+        return str(source["plot_lumi_text"])
+    energy = cfg.get("plotting", {}).get("energy_tev", cfg.get("energy_tev", 13.6))
+    label = source_display_label(source)
+    if source.get("lumi_fb") is not None:
+        return f"{label} {float(source['lumi_fb']):.2f} fb$^{{-1}}$ ({energy} TeV)"
+    return f"{label} ({energy} TeV)"
+
+
 def crystal_ball(x, alpha, n, mean, sigma, amp):
     x = np.asarray(x)
     t = (x - mean) / sigma
@@ -88,7 +111,7 @@ def extract_points_with_target_nbins(hist, xmin, xmax, target_nbins, error_model
     return centers[mask], sums[mask], errs[mask]
 
 
-def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, target_nbins=None, error_model="sqrt_y"):
+def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, target_nbins=None, error_model="sqrt_y", plot_lumi_text=None):
     if target_nbins is not None:
         x_vals, y_vals, y_errs = extract_points_with_target_nbins(
             hist=hist,
@@ -152,7 +175,7 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     ax.legend()
 
     hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
-    hep.cms.lumitext(f"Run3 {era} {era_label} (13.6 TeV)", ax=ax)
+    hep.cms.lumitext(plot_lumi_text or f"{era} {era_label}", ax=ax)
 
     ax.text(0.03, 0.84, f"Bkg integral: {bkg_integral:.0f}", transform=ax.transAxes, fontsize=10)
     ax.text(0.03, 0.78, f"Signal integral: {sig_integral:.0f}", transform=ax.transAxes, fontsize=10)
@@ -191,7 +214,7 @@ def overlay_scale_value(source, mode):
     return None
 
 
-def plot_mass_overlay(variable, era_hists, era_sources, out_png, scale_mode="none"):
+def plot_mass_overlay(variable, era_hists, era_sources, out_png, scale_mode="none", plot_lumi_text="Run 3 (13.6 TeV)"):
     fig, ax = plt.subplots(figsize=(8, 5))
 
     for era, hist in era_hists.items():
@@ -205,7 +228,13 @@ def plot_mass_overlay(variable, era_hists, era_sources, out_png, scale_mode="non
         y = np.array([shown.GetBinContent(i) for i in range(1, shown.GetNbinsX() + 1)])
         mask = (x > 0) & (y > 0)
 
-        ax.step(x[mask], y[mask], where="mid", linewidth=1.6, label=f"{era} [{era_label_for_plots(source)}]")
+        ax.step(
+            x[mask],
+            y[mask],
+            where="mid",
+            linewidth=1.6,
+            label=f"{source_display_label(source)} [{era_label_for_plots(source)}]",
+        )
 
     ax.set_xscale("log")
     ax.set_yscale("log")
@@ -222,29 +251,30 @@ def plot_mass_overlay(variable, era_hists, era_sources, out_png, scale_mode="non
     ax.grid(True, which="both", alpha=0.3)
     ax.legend(fontsize=9)
     hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
-    hep.cms.lumitext("2025 (13.6 TeV)", ax=ax)
+    hep.cms.lumitext(plot_lumi_text, ax=ax)
     fig.tight_layout()
     fig.savefig(out_png, dpi=140)
     plt.close(fig)
 
 
-def plot_mass_by_era(results_by_era, out_png, ymin, ymax, title):
+def plot_mass_by_era(results_by_era, out_png, ymin, ymax, title, plot_lumi_text="Run 3 (13.6 TeV)"):
     eras = list(results_by_era.keys())
+    labels = [results_by_era[e].get("display_label", e) for e in eras]
     masses = [results_by_era[e]["mass"]["value"] for e in eras]
     # Keep original plotting behavior: "fitted error" came from width fit error.
     mass_errs = [results_by_era[e]["width"]["err"] for e in eras]
     widths = [results_by_era[e]["width"]["value"] for e in eras]
 
     fig, ax = plt.subplots(figsize=(8, 4.8))
-    ax.errorbar(eras, masses, yerr=widths, color="tab:blue", fmt="s", capsize=4, label="Fitted mass (w width)")
-    ax.errorbar(eras, masses, yerr=mass_errs, color="tab:red", fmt="s", capsize=4, label="Fitted mass (w fitted error)")
+    ax.errorbar(labels, masses, yerr=widths, color="tab:blue", fmt="s", capsize=4, label="Fitted mass (w width)")
+    ax.errorbar(labels, masses, yerr=mass_errs, color="tab:red", fmt="s", capsize=4, label="Fitted mass (w fitted error)")
     ax.set_ylabel("Mass [GeV]")
     ax.set_ylim(ymin, ymax)
     ax.set_title(title)
     ax.grid(True, which="both", axis="x", linestyle="--", alpha=0.5)
     ax.legend()
     hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
-    hep.cms.lumitext("2025 (13.6 TeV)", ax=ax)
+    hep.cms.lumitext(plot_lumi_text, ax=ax)
     fig.tight_layout()
     fig.savefig(out_png, dpi=140)
     plt.close(fig)
@@ -262,6 +292,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     error_model = section.get("error_model", "sqrt_y")  # sqrt_y | hist
     overlay_rebin = int(section.get("overlay_rebin", default_rebin))
     overlay_scale_mode = section.get("overlay_scale", "none")
+    summary_lumi_text = global_plot_lumi_text(cfg)
 
     out_dir = Path(out_root) / section.get("output_subdir", MODULE_NAME)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -307,6 +338,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
 
                 era_hists[era] = hist_for_overlay
                 era_text = era_label_for_plots(source)
+                individual_lumi_text = source_plot_lumi_text(cfg, source)
 
                 for fit_name, win in fit_windows.items():
                     win_rebin = int(win.get("rebin", default_rebin))
@@ -325,6 +357,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         rebin_factor=win_rebin,
                         target_nbins=win_nbins,
                         error_model=error_model,
+                        plot_lumi_text=individual_lumi_text,
                     )
                     fit_binning = (
                         {"mode": "nbins", "value": win_nbins}
@@ -332,6 +365,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         else {"mode": "rebin", "value": win_rebin}
                     )
                     variable_results[fit_name][era] = {
+                        "display_label": source_display_label(source),
                         "mass": fit_out["cb_mean"],
                         "width": fit_out["cb_sigma"],
                         "fit_binning": fit_binning,
@@ -354,6 +388,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                 era_sources=era_sources,
                 out_png=str(overlay_png),
                 scale_mode=overlay_scale_mode,
+                plot_lumi_text=summary_lumi_text,
             )
 
         for fit_name, era_result in variable_results.items():
@@ -367,6 +402,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                 ymin=float(win["ymin"]),
                 ymax=float(win["ymax"]),
                 title=f"{variable} [{fit_name}]",
+                plot_lumi_text=summary_lumi_text,
             )
 
         all_results[variable] = variable_results

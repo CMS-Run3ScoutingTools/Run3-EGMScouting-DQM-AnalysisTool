@@ -44,14 +44,19 @@ After loading, run pipeline commands normally.
 `eras` are resolved from DAS datasets (no hardcoded `file`, no fixed `run_number`):
 
 - `DAS`: dataset path, e.g. `/ScoutingPFMonitor/Run2025G-PromptReco-v1/DQMIO`
+- `file_glob`: local filesystem wildcard for EOS/DQMGUI copies, e.g. `/eos/.../DQM_*__Run2026B-PromptReco-v1__DQMIO.root`
 - `run-requirement` (optional): supports `before`, `after`, `min`, `max`, `include`, `exclude`
-- `golden_json`: local JSON path or `http(s)` URL for run filtering (global or era-specific)
+- `golden_json`: local JSON path or `http(s)` URL for run filtering, configured per era
+- `label` / `year` (optional): display metadata for mixed-year comparisons such as `Run2025G`, `Run2026A`, `Run2026B`
 
 The script extracts run numbers from DQMIO filenames, filters runs, and aggregates histograms across selected runs per era.
 
+For cross-year comparisons, put all years in the same `eras:` block and assign each one its own `label`, `year`, and `golden_json`.
+See `config/dqm_pipeline_mixed_years.example.yaml`.
+
 ## Golden JSON and lumi
 
-Golden JSON is used for run filtering directly.
+Golden JSON is used for run filtering directly, and is configured per era.
 
 If `lumi.use_brilcalc: true`, `lumi_fb` is estimated automatically per era using:
 - selected runs from DAS + run filters
@@ -59,7 +64,7 @@ If `lumi.use_brilcalc: true`, `lumi_fb` is estimated automatically per era using
 - `brilcalc` output (`--output-style csv`)
 - clean subprocess env by default (`lumi.clean_env: true`) to avoid Python env conflicts
 
-When `golden_json` is a URL, the pipeline downloads it and materializes a local temp JSON automatically for `brilcalc -i`.
+When an era `golden_json` is a URL, the pipeline downloads it and materializes a local temp JSON automatically for `brilcalc -i`.
 
 ## Mass Window Binning
 
@@ -80,6 +85,15 @@ lumi:
   brilcalc_bin: brilcalc
   calibration: web
   unit: /pb
+```
+
+Example mixed-year plotting fields:
+
+```yaml
+plotting:
+  campaign_label: Run 3
+  lumi_text: Run 3 (13.6 TeV)
+  energy_tev: 13.6
 ```
 
 ## Run

@@ -18,6 +18,19 @@ from dqm_pipeline.core import (
 MODULE_NAME = "tnp_efficiency"
 
 
+def source_display_label(source):
+    return str(source.get("display_label", source.get("era", "era")))
+
+
+def global_plot_lumi_text(cfg):
+    plotting = cfg.get("plotting", {})
+    if plotting.get("lumi_text"):
+        return str(plotting["lumi_text"])
+    energy = plotting.get("energy_tev", cfg.get("energy_tev", 13.6))
+    campaign = plotting.get("campaign_label", cfg.get("campaign_label", "Run 3"))
+    return f"{campaign} ({energy} TeV)"
+
+
 def default_bins_for_original_behavior(axis, numerator_name):
     axis = str(axis).lower()
     if axis == "eta":
@@ -83,10 +96,10 @@ def compute_efficiency_points(num_hist, den_hist):
     }
 
 
-def plot_tnp_efficiency(job, tag, per_era_points, out_png, mc_points=None):
+def plot_tnp_efficiency(job, tag, per_era_points, out_png, mc_points=None, plot_lumi_text="Run 3 (13.6 TeV)"):
     fig, ax = plt.subplots(figsize=(8.5, 5.2))
 
-    for era, pts in per_era_points.items():
+    for label, pts in per_era_points.items():
         ax.errorbar(
             pts["x"],
             pts["y"],
@@ -96,7 +109,7 @@ def plot_tnp_efficiency(job, tag, per_era_points, out_png, mc_points=None):
             markersize=4,
             linewidth=1.4,
             capsize=2,
-            label=era,
+            label=label,
         )
 
     if mc_points is not None:
@@ -127,7 +140,7 @@ def plot_tnp_efficiency(job, tag, per_era_points, out_png, mc_points=None):
     ax.legend(fontsize=9)
 
     hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
-    hep.cms.lumitext("2025 (13.6 TeV)", ax=ax)
+    hep.cms.lumitext(plot_lumi_text, ax=ax)
 
     fig.tight_layout()
     fig.savefig(out_png, dpi=140)
@@ -159,6 +172,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
 
     mc_file = section.get("mc_file")
     mc_run_number = section.get("mc_run_number")
+    plot_lumi_text = global_plot_lumi_text(cfg)
 
     all_results = {}
     job_task = None
@@ -228,7 +242,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     )
 
                     points = compute_efficiency_points(num_hist, den_hist)
-                    per_era_points[era] = points
+                    per_era_points[source_display_label(source)] = points
 
                     all_results[job_name][tag][era] = {
                         "numerator": num_name,
@@ -297,6 +311,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     per_era_points=per_era_points,
                     out_png=str(out_png),
                     mc_points=mc_points,
+                    plot_lumi_text=plot_lumi_text,
                 )
             emit_log(progress, f"[{MODULE_NAME}] tag done: {job_name}/{tag}", style="blue")
             if progress is not None and tag_task is not None:

@@ -52,6 +52,8 @@ def load_config(config_path):
         raise RuntimeError("Config requires 'output_dir'.")
     if "resonance" not in cfg:
         raise RuntimeError("Config requires 'resonance'.")
+    if "golden_json" in cfg:
+        raise RuntimeError("Top-level 'golden_json' is no longer supported. Set 'golden_json' inside each era.")
 
     return cfg
 
