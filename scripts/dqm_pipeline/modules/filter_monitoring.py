@@ -380,23 +380,18 @@ def draw_run_trend_canvas(
     CMS.SaveCanvas(canvas, str(out_base.with_suffix(".pdf")))
 
 
-def resolve_base_tags(job):
+def resolve_plot_tags(job):
     raw_base_tags = list(job.get("base_tags", []))
     if raw_base_tags:
         return raw_base_tags, []
 
     raw_tags = list(job.get("tags", []))
-    normalized = []
     rewrites = []
-    seen = set()
     for tag in raw_tags:
-        base_tag = normalize_base_tag(tag)
-        if base_tag != str(tag):
-            rewrites.append((str(tag), base_tag))
-        if base_tag not in seen:
-            normalized.append(base_tag)
-            seen.add(base_tag)
-    return normalized, rewrites
+        chain_tag = normalize_base_tag(tag)
+        if chain_tag != str(tag):
+            rewrites.append((str(tag), chain_tag))
+    return raw_tags, rewrites
 
 
 def run_module(cfg, era_sources, out_root, strict=False, progress=None):
@@ -438,14 +433,14 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
         run_trend_store = {}
         emit_log(progress, f"[{MODULE_NAME}] job start: {job_name}", style="blue")
 
-        base_tags, rewrites = resolve_base_tags(job)
+        plot_tags, rewrites = resolve_plot_tags(job)
         for original, rewritten in rewrites:
             emit_log(
                 progress,
-                f"[{MODULE_NAME}] job={job_name}: normalized tag '{original}' -> base_tag '{rewritten}'",
+                f"[{MODULE_NAME}] job={job_name}: using tag '{original}' with filter-chain key '{rewritten}'",
                 style="yellow",
             )
-        if not base_tags:
+        if not plot_tags:
             message = f"{MODULE_NAME} job '{job_name}' requires non-empty 'base_tags' (or legacy 'tags')."
             if strict:
                 raise RuntimeError(message)
@@ -471,8 +466,9 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
         for era_key, source in era_items:
             era_result = {"status": "empty", "base_tags": {}}
             try:
-                for base_tag in base_tags:
-                    target_dir, numerator_name, denominator_name, hist_pass_prefix = build_hist_names(resonance, job, base_tag)
+                for plot_tag in plot_tags:
+                    chain_base_tag = normalize_base_tag(plot_tag)
+                    target_dir, numerator_name, denominator_name, hist_pass_prefix = build_hist_names(resonance, job, plot_tag)
 
                     base_num, base_num_runs = aggregate_histogram_for_era(
                         era=era_key,
@@ -490,29 +486,29 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     )
 
                     if base_num is None or base_den is None:
-                        raise RuntimeError(f"No numerator/denominator histogram found for base tag '{base_tag}'.")
+                        raise RuntimeError(f"No numerator/denominator histogram found for tag '{plot_tag}'.")
 
                     base_num = rebin_histogram(
                         base_num,
                         bins=bins,
                         rebin_factor=rebin_factor,
-                        name_hint=f"{sanitize(job_name)}_{sanitize(era_key)}_{sanitize(base_tag)}_base_num",
+                        name_hint=f"{sanitize(job_name)}_{sanitize(era_key)}_{sanitize(plot_tag)}_base_num",
                     )
                     base_den = rebin_histogram(
                         base_den,
                         bins=bins,
                         rebin_factor=rebin_factor,
-                        name_hint=f"{sanitize(job_name)}_{sanitize(era_key)}_{sanitize(base_tag)}_base_den",
+                        name_hint=f"{sanitize(job_name)}_{sanitize(era_key)}_{sanitize(plot_tag)}_base_den",
                     )
 
                     if not ROOT.TEfficiency.CheckConsistency(base_num, base_den):
-                        raise RuntimeError(f"TEfficiency consistency failed for base tag '{base_tag}'.")
+                        raise RuntimeError(f"TEfficiency consistency failed for tag '{plot_tag}'.")
                     base_eff = ROOT.TEfficiency(base_num, base_den)
 
-                    ordered_filters = list(trigger_setting.get(base_tag, []))
+                    ordered_filters = list(trigger_setting.get(chain_base_tag, []))
                     if not ordered_filters:
                         raise RuntimeError(
-                            f"No configured filter chain found for base tag '{base_tag}'. "
+                            f"No configured filter chain found for base tag '{chain_base_tag}'. "
                             f"Add it under {MODULE_NAME}.trigger_setting."
                         )
 
@@ -522,7 +518,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     filter_summary = []
 
                     for filter_name in ordered_filters:
-                        full_tag = f"{base_tag}_{filter_name}"
+                        full_tag = f"{plot_tag}_{filter_name}"
                         _, filter_num_name, _, _ = build_hist_names(resonance, job, full_tag)
                         filter_num, filter_runs = aggregate_histogram_for_era(
                             era=era_key,
@@ -560,13 +556,13 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         )
 
                         if save_era_comparison:
-                            era_comparison_store.setdefault(base_tag, {}).setdefault(filter_name, {"abs": {}, "step": {}})
-                            era_comparison_store[base_tag][filter_name]["abs"][source_display_label(source)] = eff_abs
+                            era_comparison_store.setdefault(plot_tag, {}).setdefault(filter_name, {"abs": {}, "step": {}})
+                            era_comparison_store[plot_tag][filter_name]["abs"][source_display_label(source)] = eff_abs
                             if filter_name in step_effs:
-                                era_comparison_store[base_tag][filter_name]["step"][source_display_label(source)] = step_effs[filter_name]
+                                era_comparison_store[plot_tag][filter_name]["step"][source_display_label(source)] = step_effs[filter_name]
 
                         if save_run_trends:
-                            run_trend_store.setdefault(era_key, {}).setdefault(base_tag, {"abs": {}, "step": {}})
+                            run_trend_store.setdefault(era_key, {}).setdefault(plot_tag, {"abs": {}, "step": {}})
                             abs_points = []
                             step_points = []
                             for run in sorted(source["run_files"].keys()):
@@ -626,26 +622,26 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                                 if run_step_mean is not None:
                                     step_points.append((run, run_step_mean))
 
-                            run_trend_store[era_key][base_tag]["abs"][filter_name] = abs_points
-                            run_trend_store[era_key][base_tag]["step"][filter_name] = step_points
+                            run_trend_store[era_key][plot_tag]["abs"][filter_name] = abs_points
+                            run_trend_store[era_key][plot_tag]["step"][filter_name] = step_points
 
                     base_only = False
                     if not abs_effs:
                         base_only = True
                         emit_log(
                             progress,
-                            f"[{MODULE_NAME}] job={job_name} era={era_key} base_tag={base_tag}: "
+                            f"[{MODULE_NAME}] job={job_name} era={era_key} tag={plot_tag}: "
                             "no filter-by-filter histograms found, falling back to base-pass-only plot",
                             style="yellow",
                         )
 
-                    out_base = out_dir / f"{sanitize(job_name)}_{sanitize(era_key)}_{sanitize(base_tag)}"
+                    out_base = out_dir / f"{sanitize(job_name)}_{sanitize(era_key)}_{sanitize(plot_tag)}"
                     draw_filter_canvas(
                         cfg=cfg,
                         source=source,
                         era_key=era_key,
                         job=job,
-                        base_tag=base_tag,
+                        base_tag=plot_tag,
                         base_eff=base_eff,
                         abs_effs=abs_effs,
                         step_effs=step_effs,
@@ -656,7 +652,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     )
 
                     era_result["status"] = "ok"
-                    era_result["base_tags"][base_tag] = {
+                    era_result["base_tags"][plot_tag] = {
                         "used_runs_num": base_num_runs,
                         "used_runs_den": base_den_runs,
                         "filters": filter_summary,
