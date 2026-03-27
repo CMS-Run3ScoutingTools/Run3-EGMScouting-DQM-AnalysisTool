@@ -40,6 +40,14 @@ def compact_label(value):
     return str(value)
 
 
+def normalize_base_tag(tag):
+    value = str(tag)
+    for suffix in ("_fireTrigObj",):
+        if value.endswith(suffix):
+            return value[: -len(suffix)]
+    return value
+
+
 def source_display_label(source):
     return str(source.get("display_label", source.get("era", "era")))
 
@@ -372,6 +380,25 @@ def draw_run_trend_canvas(
     CMS.SaveCanvas(canvas, str(out_base.with_suffix(".pdf")))
 
 
+def resolve_base_tags(job):
+    raw_base_tags = list(job.get("base_tags", []))
+    if raw_base_tags:
+        return raw_base_tags, []
+
+    raw_tags = list(job.get("tags", []))
+    normalized = []
+    rewrites = []
+    seen = set()
+    for tag in raw_tags:
+        base_tag = normalize_base_tag(tag)
+        if base_tag != str(tag):
+            rewrites.append((str(tag), base_tag))
+        if base_tag not in seen:
+            normalized.append(base_tag)
+            seen.add(base_tag)
+    return normalized, rewrites
+
+
 def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     section = cfg.get(MODULE_NAME)
     if not section or not section.get("enabled", True):
@@ -411,9 +438,22 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
         run_trend_store = {}
         emit_log(progress, f"[{MODULE_NAME}] job start: {job_name}", style="blue")
 
-        base_tags = list(job.get("base_tags", []))
+        base_tags, rewrites = resolve_base_tags(job)
+        for original, rewritten in rewrites:
+            emit_log(
+                progress,
+                f"[{MODULE_NAME}] job={job_name}: normalized tag '{original}' -> base_tag '{rewritten}'",
+                style="yellow",
+            )
         if not base_tags:
-            raise RuntimeError(f"{MODULE_NAME} job '{job_name}' requires non-empty 'base_tags'.")
+            message = f"{MODULE_NAME} job '{job_name}' requires non-empty 'base_tags' (or legacy 'tags')."
+            if strict:
+                raise RuntimeError(message)
+            emit_log(progress, f"[{MODULE_NAME}][WARN] {message} Skipping job.", style="yellow")
+            summary[job_name] = {"status": "invalid_config", "message": message}
+            if progress is not None and job_task is not None:
+                progress.update(job_task, advance=1)
+            continue
 
         axis = str(job.get("axis", "pt")).lower()
         bins = job.get("bins")
@@ -471,7 +511,10 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
 
                     ordered_filters = list(trigger_setting.get(base_tag, []))
                     if not ordered_filters:
-                        raise RuntimeError(f"No configured filter chain found for base tag '{base_tag}'.")
+                        raise RuntimeError(
+                            f"No configured filter chain found for base tag '{base_tag}'. "
+                            f"Add it under {MODULE_NAME}.trigger_setting."
+                        )
 
                     prev_num = None
                     abs_effs = {}
