@@ -3,6 +3,7 @@
 Config-driven DQMIO pipeline with modular workflows:
 - `mass_fit`: Crystal-Ball + background fits for invariant-mass histograms
 - `tnp_efficiency`: TnP efficiency plots (era overlays, optional MC)
+- `filter_monitoring`: filter-by-filter TnP monitoring using ROOT/cmsstyle canvases
 
 ## Architecture
 
@@ -11,6 +12,7 @@ Config-driven DQMIO pipeline with modular workflows:
 - Monitoring modules:
   - `scripts/dqm_pipeline/modules/mass_fit.py`
   - `scripts/dqm_pipeline/modules/tnp_efficiency.py`
+  - `scripts/dqm_pipeline/modules/filter_monitoring.py`
 - Module registry: `scripts/dqm_pipeline/modules/__init__.py`
 
 To add future work, implement a new module file with:
@@ -122,7 +124,13 @@ Run one module:
 ```bash
 python3 scripts/run_dqm_pipeline.py --config config/dqm_pipeline.yaml --module mass_fit
 python3 scripts/run_dqm_pipeline.py --config config/dqm_pipeline.yaml --module tnp_efficiency
+python3 scripts/run_dqm_pipeline.py --config config/dqm_pipeline.yaml --module filter_monitoring
 ```
+
+`filter_monitoring` supports:
+- per-era filter-chain monitoring canvases
+- era-by-era comparison for each filter (`save_era_comparison: true`)
+- optional run-ordered auxiliary trend plots (`save_run_trends: true`)
 
 Strict mode (fail immediately on missing file/hist):
 

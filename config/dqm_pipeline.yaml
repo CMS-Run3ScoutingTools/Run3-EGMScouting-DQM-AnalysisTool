@@ -83,6 +83,45 @@ tnp_efficiency:
         - DST_PFScouting_DoubleEG_v_fireTrigObj
       include_mc: false
 
+filter_monitoring:
+  enabled: true
+  output_subdir: filter_monitoring
+  rebin: 1
+  ratio_ymin: 0.9
+  ratio_ymax: 1.1
+  legend_cols: 2
+  save_era_comparison: true
+  save_run_trends: true
+  hist_path_template: DQMData/Run {run}/HLT/Run summary/ScoutingOffline/EGamma/TnP/{target_dir}/{hist}
+  trigger_setting:
+    DST_PFScouting_DoubleEG_v:
+      - hltEGL1DoubleIsoEG11Filter
+      - hltDoubleEG11CaloIdLEt11Filter
+      - hltDoubleEG11CaloIdLClusterShapeFilter
+      - hltDoubleEG11CaloIdLHEFilter
+    DST_PFScouting_SinglePhotonEB_v:
+      - hltEGL1SingleEGOrFilter
+      - hltEG30EBTightIDTightIsoEtFilter
+      - hltEG30EBTightIDTightIsoClusterShapeFilter
+      - hltEG30EBTightIDTightIsoHEFilter
+      - hltEG30EBTightIDTightIsoR9Filter
+      - hltEG30EBTightIDTightIsotEcalIsoFilter
+      - hltEG30EBTightIDTightIsoHcalIsoFilter
+      - hltEG30EBTightIDTightIsoTrackIsoFilter
+  bins:
+    pt: [0, 5, 10, 15, 20, 30, 40, 50, 80, 120, 200]
+    eta: [-2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
+  jobs:
+    - name: dst_doubleEG_sct_leading_endcap_filters
+      tagging_type: sct
+      probe_type: sct
+      target_dir: Tag_ScoutingElectron
+      pt_order: leading
+      axis: pt
+      region: Endcap
+      base_tags:
+        - DST_PFScouting_DoubleEG_v
+
     - name: dst_doubleEG_sct_leading_endcap
       tagging_type: sct
       probe_type: sct
