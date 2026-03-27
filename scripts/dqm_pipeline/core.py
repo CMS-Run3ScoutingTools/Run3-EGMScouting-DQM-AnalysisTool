@@ -20,6 +20,11 @@ import ROOT
 
 
 DEFAULT_XROOTD_REDIRECTOR = "root://cms-xrd-global.cern.ch"
+DEFAULT_XROOTD_FALLBACK_REDIRECTORS = [
+    "root://cms-xrd-global.cern.ch",
+    "root://xrootd-cms.infn.it",
+    "root://cmsxrootd.fnal.gov",
+]
 
 
 def sanitize(name):
@@ -49,6 +54,45 @@ def as_root_uri(path_str, redirector):
     if path_str.startswith("/store/"):
         return f"{redirector.rstrip('/')}//{path_str.lstrip('/')}"
     return path_str
+
+
+def extract_store_path(path_str):
+    if path_str.startswith("/store/"):
+        return path_str
+    match = re.search(r"(//store/.+)$", path_str)
+    if match:
+        return match.group(1)[1:]
+    match = re.search(r"(/store/.+)$", path_str)
+    if match:
+        return match.group(1)
+    return None
+
+
+def candidate_root_paths(path_str, extra_redirectors=None):
+    store_path = extract_store_path(path_str)
+    if store_path is None:
+        return [path_str]
+
+    out = []
+    seen = set()
+    redirectors = list(DEFAULT_XROOTD_FALLBACK_REDIRECTORS)
+    if extra_redirectors:
+        redirectors = list(extra_redirectors) + redirectors
+
+    if path_str.startswith("root://"):
+        out.append(path_str)
+        seen.add(path_str)
+
+    if store_path not in seen:
+        out.append(store_path)
+        seen.add(store_path)
+
+    for redirector in redirectors:
+        candidate = f"{redirector.rstrip('/')}//{store_path.lstrip('/')}"
+        if candidate not in seen:
+            out.append(candidate)
+            seen.add(candidate)
+    return out
 
 
 def run_command(cmd, progress=None, description=None, env=None, timeout=300):
@@ -569,6 +613,9 @@ def _build_era_summary_table(era_sources):
 
 def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False, progress=None):
     redirector = era_cfg.get("xrootd_redirector", cfg.get("xrootd_redirector", DEFAULT_XROOTD_REDIRECTOR))
+    xrootd_redirectors = era_cfg.get("xrootd_redirectors", cfg.get("xrootd_redirectors"))
+    if not xrootd_redirectors:
+        xrootd_redirectors = [redirector]
     run_req = era_cfg.get("run_requirement", era_cfg.get("run-requirement"))
     # Optional: if missing/null, no run-based filtering is applied.
     if run_req is None:
@@ -696,6 +743,8 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
                     f"[resolve][WARN] {era}: {unresolved_count} DAS files still unresolved and were skipped",
                     style="yellow",
                 )
+            if progress is not None and map_task is not None:
+                progress.remove_task(map_task)
 
         _emit(
             progress,
@@ -780,9 +829,11 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
         "lumi_source": lumi_source,
         "dataset": dataset,
         "golden_json_source": golden_json_source,
+        "xrootd_redirectors": list(xrootd_redirectors),
     }
     if progress is not None and stage_task is not None:
         progress.update(stage_task, advance=1, description=f"{era}: done")
+        progress.remove_task(stage_task)
     return out
 
 
@@ -858,24 +909,33 @@ def prepare_era_sources(cfg, config_dir, strict=False, progress=None):
     _emit(progress, "[resolve] era summary table:", style=None)
     for line in _build_era_summary_table(out):
         _emit(progress, line, style=None)
+    if progress is not None and task_id is not None:
+        progress.remove_task(task_id)
 
     return out
 
 
-def load_histogram(file_path, hist_path):
-    root_file = ROOT.TFile.Open(file_path)
-    if not root_file or root_file.IsZombie():
-        raise RuntimeError(f"Cannot open file: {file_path}")
+def load_histogram(file_path, hist_path, xrootd_redirectors=None):
+    errors = []
 
-    hist = root_file.Get(hist_path)
-    if not hist:
+    for candidate in candidate_root_paths(file_path, extra_redirectors=xrootd_redirectors):
+        root_file = ROOT.TFile.Open(candidate)
+        if not root_file or root_file.IsZombie():
+            errors.append(f"open failed: {candidate}")
+            continue
+
+        hist = root_file.Get(hist_path)
+        if not hist:
+            root_file.Close()
+            raise RuntimeError(f"Missing histogram '{hist_path}' in {candidate}")
+
+        out = hist.Clone()
+        out.SetDirectory(0)
         root_file.Close()
-        raise RuntimeError(f"Missing histogram '{hist_path}' in {file_path}")
+        return out
 
-    out = hist.Clone()
-    out.SetDirectory(0)
-    root_file.Close()
-    return out
+    err_text = "; ".join(errors[-3:]) if errors else "unknown ROOT open failure"
+    raise RuntimeError(f"Cannot open file via ROOT/XRootD: {file_path} | tried={len(errors)} | {err_text}")
 
 
 def aggregate_histogram_for_era(era, source, hist_path_template, fmt_args, strict=False):
@@ -886,16 +946,24 @@ def aggregate_histogram_for_era(era, source, hist_path_template, fmt_args, stric
     print(
         f"[aggregate] era={era} start runs={len(runs)} files={files_total} template='{hist_path_template}' args={fmt_args}"
     )
+    total_file_open_failures = 0
+    failed_runs = []
+    redirectors = source.get("xrootd_redirectors")
 
     for i_run, run in enumerate(runs, start=1):
         hist_path = hist_path_template.format(run=run, **fmt_args)
         run_has_hist = False
+        run_open_failures = 0
+        run_fail_examples = []
 
         for file_path in source["run_files"][run]:
             try:
-                hist = load_histogram(file_path, hist_path)
+                hist = load_histogram(file_path, hist_path, xrootd_redirectors=redirectors)
             except Exception as exc:
-                print(f"[aggregate][WARN] era={era} run={run}: {exc}")
+                total_file_open_failures += 1
+                run_open_failures += 1
+                if len(run_fail_examples) < 2:
+                    run_fail_examples.append(str(exc))
                 if strict:
                     raise
                 continue
@@ -909,8 +977,30 @@ def aggregate_histogram_for_era(era, source, hist_path_template, fmt_args, stric
 
         if run_has_hist:
             used_runs.append(run)
+        elif run_open_failures > 0:
+            failed_runs.append(
+                {
+                    "run": run,
+                    "n_failures": run_open_failures,
+                    "examples": run_fail_examples,
+                }
+            )
         if i_run == 1 or i_run % 25 == 0 or i_run == len(runs):
             print(f"[aggregate] era={era} progress runs={i_run}/{len(runs)} used_runs={len(used_runs)}")
+
+    if failed_runs:
+        print(
+            f"[aggregate][WARN] era={era}: {len(failed_runs)} runs had ROOT/XRootD open failures; "
+            f"failed_files={total_file_open_failures}"
+        )
+        for item in failed_runs[:5]:
+            detail = item["examples"][0] if item["examples"] else "no example"
+            print(
+                f"[aggregate][WARN] era={era} run={item['run']}: open_failures={item['n_failures']} example={detail}"
+            )
+        if len(failed_runs) > 5:
+            print(f"[aggregate][WARN] era={era}: {len(failed_runs) - 5} additional failed runs suppressed")
+
     print(f"[aggregate] era={era} done used_runs={len(used_runs)}/{len(runs)}")
     return merged, used_runs
 
