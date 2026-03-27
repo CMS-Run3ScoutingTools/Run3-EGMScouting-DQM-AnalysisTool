@@ -181,6 +181,35 @@ def mean_efficiency(num_hist, den_hist):
     return total / n_valid if n_valid > 0 else None
 
 
+def build_run_trend_hist(points, name_hint):
+    sorted_points = sorted((int(run), float(val)) for run, val in points)
+    if not sorted_points:
+        return None
+
+    runs = [run for run, _ in sorted_points]
+    values = [val for _, val in sorted_points]
+
+    if len(runs) == 1:
+        edges = [runs[0] - 0.5, runs[0] + 0.5]
+    else:
+        edges = [runs[0] - 0.5 * (runs[1] - runs[0])]
+        for idx in range(len(runs) - 1):
+            edges.append(0.5 * (runs[idx] + runs[idx + 1]))
+        edges.append(runs[-1] + 0.5 * (runs[-1] - runs[-2]))
+
+    hist = ROOT.TH1F(
+        sanitize(name_hint),
+        "",
+        len(sorted_points),
+        array("d", [float(x) for x in edges]),
+    )
+    hist.SetDirectory(0)
+    for idx, value in enumerate(values, start=1):
+        hist.SetBinContent(idx, value)
+        hist.SetBinError(idx, 0.0)
+    return hist
+
+
 def draw_filter_canvas(
     cfg,
     source,
@@ -338,19 +367,38 @@ def draw_run_trend_canvas(
     if not runs:
         return
 
+    x_min = float(min(runs)) - 1.0
+    x_max = float(max(runs)) + 1.0
+    y_values = [val for points in trend_data.values() for _, val in points]
+    y_min = 0.0
+    y_max = 1.02
+    if y_values:
+        y_min = max(0.0, min(y_values) - 0.05)
+        y_max = min(1.08, max(y_values) + 0.05)
+        if y_max <= y_min:
+            y_min, y_max = 0.0, 1.02
+
     canvas = CMS.cmsCanvas(
         "",
-        float(min(runs)) - 1.0,
-        float(max(runs)) + 1.0,
-        0.0,
-        1.08,
-        "run",
-        "mean efficiency",
+        x_min,
+        x_max,
+        y_min,
+        y_max,
+        "Run number",
+        "Overall efficiency",
         square=CMS.kSquare,
         extraSpace=0.08,
         iPos=11,
     )
-    legend = make_compact_legend(0.40, 0.60, 0.93, 0.90, text_size=0.018, ncols=legend_cols)
+    frame = CMS.GetcmsCanvasHist(canvas)
+    frame.GetXaxis().SetLabelSize(0.042)
+    frame.GetYaxis().SetLabelSize(0.042)
+    frame.GetXaxis().SetTitleSize(0.050)
+    frame.GetYaxis().SetTitleSize(0.050)
+    frame.GetXaxis().SetTitleOffset(1.00)
+    frame.GetYaxis().SetTitleOffset(1.10)
+
+    legend = make_compact_legend(0.52, 0.17, 0.92, 0.40, text_size=0.028, ncols=1)
 
     palette_hex = [
         "#3f90da", "#ffa90e", "#bd1f01", "#94a4a2", "#832db6",
@@ -362,19 +410,29 @@ def draw_run_trend_canvas(
     for idx, (filter_name, points) in enumerate(trend_data.items()):
         if not points:
             continue
-        xs = array("d", [float(run) for run, _ in points])
-        ys = array("d", [float(val) for _, val in points])
-        graph = ROOT.TGraph(len(xs), xs, ys)
+        hist = build_run_trend_hist(
+            points,
+            f"trend_{sanitize(source.get('era', 'era'))}_{sanitize(base_tag)}_{sanitize(filter_name)}_{sanitize(title_suffix)}",
+        )
+        if hist is None:
+            continue
         color = palette[idx % len(palette)]
         marker = marker_styles[idx % len(marker_styles)]
-        graph.SetLineColor(color)
-        graph.SetMarkerColor(color)
-        graph.SetMarkerStyle(marker)
-        graph.SetMarkerSize(0.9)
-        graph.SetLineWidth(2)
-        draw_opt = "ALP" if idx == 0 else "LP SAME"
-        graph.Draw(draw_opt)
-        legend.AddEntry(graph, compact_label(filter_name), "PL")
+        hist.SetLineColor(color)
+        hist.SetMarkerColor(color)
+        hist.SetMarkerStyle(marker)
+        hist.SetMarkerSize(1.0)
+        hist.SetLineWidth(0)
+        CMS.cmsDraw(
+            hist,
+            "P SAME",
+            lcolor=color,
+            mcolor=color,
+            msize=1.0,
+            lwidth=0,
+            fstyle=0,
+        )
+        legend.AddEntry(hist, compact_label(filter_name), "PL")
 
     CMS.SaveCanvas(canvas, str(out_base.with_suffix(".png")), close=False)
     CMS.SaveCanvas(canvas, str(out_base.with_suffix(".pdf")))
