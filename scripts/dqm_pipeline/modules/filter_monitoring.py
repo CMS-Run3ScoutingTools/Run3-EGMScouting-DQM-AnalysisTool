@@ -260,7 +260,7 @@ def draw_filter_canvas(
     marker_styles = [20, 21, 22, 23, 33, 34, 29, 30]
 
     canvas.cd(1)
-    legend = make_compact_legend(0.43, 0.58, 0.93, 0.90, text_size=0.018, ncols=legend_cols)
+    legend = make_compact_legend(0.43, 0.18, 0.93, 0.50, text_size=0.03, ncols=legend_cols)
 
     set_eff_style(base_eff, ROOT.kBlack, 20, marker_size=1.05, line_style=1)
     CMS.cmsDraw(base_eff, "P E", lcolor=ROOT.kBlack, mcolor=ROOT.kBlack, msize=1.0, lwidth=2, fstyle=0)
@@ -350,10 +350,10 @@ def draw_filter_era_comparison_canvas(
 
 def draw_run_trend_canvas(
     cfg,
-    source,
     base_tag,
     title_suffix,
-    trend_data,
+    era_trend_data,
+    era_sources,
     out_base,
     legend_cols,
 ):
@@ -361,15 +361,27 @@ def draw_run_trend_canvas(
     energy = str(plotting.get("energy_tev", cfg.get("energy_tev", 13.6)))
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(energy)
-    CMS.SetLumi(source_lumi_label(cfg, source))
+    CMS.SetLumi(str(plotting.get("lumi_text", f"Run 3 ({energy} TeV)")))
 
-    runs = sorted({run for points in trend_data.values() for run, _ in points})
+    runs = sorted(
+        {
+            run
+            for filter_map in era_trend_data.values()
+            for points in filter_map.values()
+            for run, _ in points
+        }
+    )
     if not runs:
         return
 
     x_min = float(min(runs)) - 1.0
     x_max = float(max(runs)) + 1.0
-    y_values = [val for points in trend_data.values() for _, val in points]
+    y_values = [
+        val
+        for filter_map in era_trend_data.values()
+        for points in filter_map.values()
+        for _, val in points
+    ]
     y_min = 0.0
     y_max = 1.02
     if y_values:
@@ -397,6 +409,10 @@ def draw_run_trend_canvas(
     frame.GetYaxis().SetTitleSize(0.050)
     frame.GetXaxis().SetTitleOffset(1.00)
     frame.GetYaxis().SetTitleOffset(1.10)
+    frame.GetXaxis().SetNoExponent(True)
+    frame.GetXaxis().SetMaxDigits(10)
+    frame.GetXaxis().CenterTitle(True)
+    frame.GetYaxis().CenterTitle(True)
 
     legend = make_compact_legend(0.52, 0.17, 0.92, 0.40, text_size=0.028, ncols=1)
 
@@ -407,12 +423,17 @@ def draw_run_trend_canvas(
     palette = [ROOT.TColor.GetColor(x) for x in palette_hex]
     marker_styles = [20, 21, 22, 23, 33, 34]
 
-    for idx, (filter_name, points) in enumerate(trend_data.items()):
+    combined_trend_data = {}
+    for era_key, filter_map in era_trend_data.items():
+        for filter_name, points in filter_map.items():
+            combined_trend_data.setdefault(filter_name, []).extend(points)
+
+    for idx, (filter_name, points) in enumerate(combined_trend_data.items()):
         if not points:
             continue
         hist = build_run_trend_hist(
             points,
-            f"trend_{sanitize(source.get('era', 'era'))}_{sanitize(base_tag)}_{sanitize(filter_name)}_{sanitize(title_suffix)}",
+            f"trend_{sanitize(base_tag)}_{sanitize(filter_name)}_{sanitize(title_suffix)}",
         )
         if hist is None:
             continue
@@ -433,6 +454,39 @@ def draw_run_trend_canvas(
             fstyle=0,
         )
         legend.AddEntry(hist, compact_label(filter_name), "PL")
+
+    era_ranges = []
+    for era_key, filter_map in era_trend_data.items():
+        era_runs = sorted({run for points in filter_map.values() for run, _ in points})
+        if not era_runs:
+            continue
+        era_ranges.append(
+            {
+                "era": era_key,
+                "label": source_display_label(era_sources[era_key]),
+                "run_min": float(min(era_runs)),
+                "run_max": float(max(era_runs)),
+            }
+        )
+    era_ranges.sort(key=lambda item: item["run_min"])
+
+    boundary_line = ROOT.TLine()
+    boundary_line.SetLineColor(ROOT.kGray + 2)
+    boundary_line.SetLineStyle(2)
+    boundary_line.SetLineWidth(2)
+
+    era_label = ROOT.TLatex()
+    era_label.SetTextFont(42)
+    era_label.SetTextSize(0.028)
+    era_label.SetTextAlign(22)
+
+    for idx, item in enumerate(era_ranges):
+        x_center = 0.5 * (item["run_min"] + item["run_max"])
+        era_label.DrawLatex(x_center, y_max - 0.02 * (y_max - y_min), item["label"])
+        if idx < len(era_ranges) - 1:
+            next_item = era_ranges[idx + 1]
+            x_boundary = 0.5 * (item["run_max"] + next_item["run_min"])
+            boundary_line.DrawLine(x_boundary, y_min, x_boundary, y_max)
 
     CMS.SaveCanvas(canvas, str(out_base.with_suffix(".png")), close=False)
     CMS.SaveCanvas(canvas, str(out_base.with_suffix(".pdf")))
@@ -750,31 +804,36 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         )
 
         if save_run_trends:
+            combined_run_trend_store = {}
             for era_key, era_map in run_trend_store.items():
-                source = era_sources[era_key]
                 for base_tag, payload in era_map.items():
-                    if payload["abs"]:
-                        out_base_abs = out_dir / f"{sanitize(job_name)}_{sanitize(era_key)}_{sanitize(base_tag)}_run_trend_abs"
-                        draw_run_trend_canvas(
-                            cfg=cfg,
-                            source=source,
-                            base_tag=base_tag,
-                            title_suffix="abs",
-                            trend_data=payload["abs"],
-                            out_base=out_base_abs,
-                            legend_cols=legend_cols,
-                        )
-                    if payload["step"]:
-                        out_base_step = out_dir / f"{sanitize(job_name)}_{sanitize(era_key)}_{sanitize(base_tag)}_run_trend_step"
-                        draw_run_trend_canvas(
-                            cfg=cfg,
-                            source=source,
-                            base_tag=base_tag,
-                            title_suffix="step",
-                            trend_data=payload["step"],
-                            out_base=out_base_step,
-                            legend_cols=legend_cols,
-                        )
+                    combined_run_trend_store.setdefault(base_tag, {"abs": {}, "step": {}})
+                    combined_run_trend_store[base_tag]["abs"][era_key] = payload["abs"]
+                    combined_run_trend_store[base_tag]["step"][era_key] = payload["step"]
+
+            for base_tag, payload in combined_run_trend_store.items():
+                if payload["abs"]:
+                    out_base_abs = out_dir / f"{sanitize(job_name)}_{sanitize(base_tag)}_run_trend_abs"
+                    draw_run_trend_canvas(
+                        cfg=cfg,
+                        base_tag=base_tag,
+                        title_suffix="abs",
+                        era_trend_data=payload["abs"],
+                        era_sources=era_sources,
+                        out_base=out_base_abs,
+                        legend_cols=legend_cols,
+                    )
+                if payload["step"]:
+                    out_base_step = out_dir / f"{sanitize(job_name)}_{sanitize(base_tag)}_run_trend_step"
+                    draw_run_trend_canvas(
+                        cfg=cfg,
+                        base_tag=base_tag,
+                        title_suffix="step",
+                        era_trend_data=payload["step"],
+                        era_sources=era_sources,
+                        out_base=out_base_step,
+                        legend_cols=legend_cols,
+                    )
 
         if progress is not None and job_task is not None:
             progress.update(job_task, advance=1)
