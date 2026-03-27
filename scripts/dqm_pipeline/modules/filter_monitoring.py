@@ -602,7 +602,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                                 prev_full_tag = None
                                 prev_idx = ordered_filters.index(filter_name) - 1
                                 if prev_idx >= 0:
-                                    prev_full_tag = f"{base_tag}_{ordered_filters[prev_idx]}"
+                                    prev_full_tag = f"{plot_tag}_{ordered_filters[prev_idx]}"
                                     _, prev_num_name, _, _ = build_hist_names(resonance, job, prev_full_tag)
                                     prev_run_num = aggregate_histogram_for_run(
                                         source=source,

@@ -112,24 +112,82 @@ filter_monitoring:
     pt: [0, 5, 10, 15, 20, 30, 40, 50, 80, 120, 200]
     eta: [-2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
   jobs:
-    - name: dst_doubleEG_sct_leading_endcap_filters
-      tagging_type: sct
+    - name: dst_doubleEG_patTag_sctProbe_leading_barrel_filters
+      tagging_type: pat
       probe_type: sct
-      target_dir: Tag_ScoutingElectron
+      target_dir: Tag_PatElectron
+      pt_order: leading
+      axis: pt
+      region: Barrel
+      base_tags:
+        - DST_PFScouting_DoubleEG_v
+
+    - name: dst_doubleEG_patTag_sctProbe_leading_endcap_filters
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
       pt_order: leading
       axis: pt
       region: Endcap
       base_tags:
         - DST_PFScouting_DoubleEG_v
 
-    - name: dst_doubleEG_sct_leading_endcap
-      tagging_type: sct
+    - name: dst_doubleEG_patTag_sctProbe_subleading_barrel_filters
+      tagging_type: pat
       probe_type: sct
-      target_dir: Tag_ScoutingElectron
+      target_dir: Tag_PatElectron
+      pt_order: subleading
+      axis: pt
+      region: Barrel
+      base_tags:
+        - DST_PFScouting_DoubleEG_v
+
+    - name: dst_doubleEG_patTag_sctProbe_subleading_endcap_filters
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
+      pt_order: subleading
+      axis: pt
+      region: Endcap
+      base_tags:
+        - DST_PFScouting_DoubleEG_v
+
+    - name: dst_singlePhotonEB_patTag_sctProbe_leading_barrel_filters
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
+      pt_order: leading
+      axis: pt
+      region: Barrel
+      base_tags:
+        - DST_PFScouting_SinglePhotonEB_v
+
+    - name: dst_singlePhotonEB_patTag_sctProbe_leading_endcap_filters
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
       pt_order: leading
       axis: pt
       region: Endcap
-      tags:
-        - DST_PFScouting_DoubleEG_v
-        - DST_PFScouting_DoubleEG_v_fireTrigObj
-      include_mc: false
+      base_tags:
+        - DST_PFScouting_SinglePhotonEB_v
+
+    - name: dst_singlePhotonEB_patTag_sctProbe_subleading_barrel_filters
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
+      pt_order: subleading
+      axis: pt
+      region: Barrel
+      base_tags:
+        - DST_PFScouting_SinglePhotonEB_v
+
+    - name: dst_singlePhotonEB_patTag_sctProbe_subleading_endcap_filters
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
+      pt_order: subleading
+      axis: pt
+      region: Endcap
+      base_tags:
+        - DST_PFScouting_SinglePhotonEB_v
