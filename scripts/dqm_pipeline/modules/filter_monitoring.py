@@ -416,7 +416,11 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
             raise RuntimeError(f"{MODULE_NAME} job '{job_name}' requires non-empty 'base_tags'.")
 
         axis = str(job.get("axis", "pt")).lower()
-        bins = job.get("bins", section.get("bins", {}).get(axis), default_bins(axis))
+        bins = job.get("bins")
+        if bins is None:
+            bins = section.get("bins", {}).get(axis)
+        if bins is None:
+            bins = default_bins(axis)
         rebin_factor = int(job.get("rebin", section.get("rebin", 1)))
 
         era_task = None
