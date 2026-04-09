@@ -1,6 +1,6 @@
-tag: EGM_Scouting_DQM_2026_v2
+tag: EGM_Scouting_DQM_2026_v3
 resonance: resonanceZ
-output_dir: plot_DQM2026_check
+output_dir: plot_DQM2026_check_STEAM
 
 # Optional: estimate lumi_fb automatically with brilcalc.
 lumi:
@@ -29,6 +29,12 @@ eras:
     year: 2026
     golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions26/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions26_13p6TeV_Latest.json
     file_glob: /eos/cms/store/group/comm_dqm/DQMGUI_data/Run2026/ScoutingPFMonitor/*/DQM_*__ScoutingPFMonitor__Run2026B-PromptReco-v1__DQMIO.root
+  2026_eraC:
+    label: Run2026C
+    year: 2026
+    golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions26/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions26_13p6TeV_Latest.json
+    file_glob: /eos/cms/store/group/comm_dqm/DQMGUI_data/Run2026/ScoutingPFMonitor/*/DQM_*__ScoutingPFMonitor__Run2026C-PromptReco-v1__DQMIO.root
+
     # Optional: omit run-requirement to use all runs from DAS (then golden_json filter still applies).
 #    run-requirement:
 #      min: 398000
