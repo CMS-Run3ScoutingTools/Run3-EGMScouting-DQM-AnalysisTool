@@ -23,6 +23,24 @@ COLOR_TEMPLATE = [
 ]
 
 
+def apply_poisson_errors_from_counts(hist, count_hist, scale_factor=1.0):
+    for idx in range(1, hist.GetNbinsX() + 1):
+        raw_value = float(count_hist.GetBinContent(idx))
+        error = (raw_value ** 0.5) * float(scale_factor) if raw_value > 0 else 0.0
+        hist.SetBinError(idx, error)
+
+
+def make_error_band(hist, name, color):
+    band = hist.Clone(name)
+    band.SetDirectory(0)
+    band.SetLineColor(color)
+    band.SetFillColorAlpha(color, 0.25)
+    band.SetFillStyle(1001)
+    band.SetMarkerSize(0)
+    band.SetLineWidth(0)
+    return band
+
+
 def find_populated_xrange(era_hists, margin_bins=1):
     first_edge = None
     last_edge = None
@@ -115,6 +133,7 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
     quantity = str(job["quantity"])
     x_title = str(job.get("x_title", quantity))
     y_title = str(job.get("y_title", "A.U."))
+    ymin_floor = float(job.get("ymin_floor", 1e-4))
     y_min = float(job.get("ymin", 0.01 if logy else 0.0))
     ratio_ymin = float(job.get("ratio_ymin", 0.5))
     ratio_ymax = float(job.get("ratio_ymax", 1.5))
@@ -146,9 +165,14 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
         ymax = visible_ymax
     if visible_ymin is not None:
         if logy:
-            y_min = max(float(job.get("ymin_floor", 1e-4)), visible_ymin / float(job.get("ymin_divisor", 5.0)))
+            y_min = max(ymin_floor, visible_ymin / float(job.get("ymin_divisor", 5.0)))
         else:
             y_min = float(job.get("ymin_linear", 0.0))
+    if logy and y_min <= 0:
+        if visible_ymin is not None and visible_ymin > 0:
+            y_min = max(ymin_floor, visible_ymin / float(job.get("ymin_divisor", 5.0)))
+        else:
+            y_min = ymin_floor
     ymax_scale_default = 5.0 if logy else 1.18
     min_span_default = 10.0 if logy else 1.05
     y_max = max(
@@ -186,12 +210,16 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
     for idx, era_key in enumerate(ordered_eras):
         hist = era_hists[era_key]
         color = COLOR_TEMPLATE[idx % len(COLOR_TEMPLATE)]
+        band = make_error_band(hist, f"{hist.GetName()}_band", color)
+        register_canvas_input(canvas, f"band::{era_key}", band)
+        CMS.cmsDraw(band, "E2", lcolor=color, fcolor=color, fstyle=1001, lwidth=0, msize=0)
         register_canvas_input(canvas, f"hist::{era_key}", hist)
-        CMS.cmsDraw(hist, "HIST", lcolor=color, msize=0, lwidth=3, fstyle=0)
+        CMS.cmsDraw(hist, "HIST SAME", lcolor=color, msize=0, lwidth=3, fstyle=0)
         legend.AddEntry(hist, source_display_label(era_sources[era_key]), "L")
 
     if logy:
-        canvas.SetLogy()
+        canvas.cd(1)
+        ROOT.gPad.SetLogy()
 
     canvas.cd(2)
     first_ratio = True
@@ -203,8 +231,19 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
         ratio.SetDirectory(0)
         ratio.Divide(reference_hist)
         color = COLOR_TEMPLATE[idx % len(COLOR_TEMPLATE)]
+        ratio_band = make_error_band(ratio, f"{ratio.GetName()}_band", color)
+        register_canvas_input(canvas, f"ratio_band::{era_key}", ratio_band)
+        CMS.cmsDraw(
+            ratio_band,
+            "E2" if first_ratio else "E2 SAME",
+            lcolor=color,
+            fcolor=color,
+            fstyle=1001,
+            lwidth=0,
+            msize=0,
+        )
         register_canvas_input(canvas, f"ratio::{era_key}", ratio)
-        draw_opt = "HIST" if first_ratio else "HIST SAME"
+        draw_opt = "HIST SAME"
         CMS.cmsDraw(ratio, draw_opt, lcolor=color, msize=0, lwidth=3, fstyle=0)
         first_ratio = False
 
@@ -280,24 +319,29 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     summary[job_name][era_key] = {"status": "empty", "used_runs": used_runs, "integral": float(integral)}
                     continue
 
+                rebin_factor = int(job.get("rebin", default_rebin))
                 hist = hist.Clone(f"{sanitize(job_name)}_{sanitize(era_key)}_{sanitize(hist.GetName())}")
                 hist.SetDirectory(0)
-                hist.Scale(default_scale_to / integral)
+                if rebin_factor > 1:
+                    hist = hist.Rebin(rebin_factor, f"{hist.GetName()}_rebin")
+                    hist.SetDirectory(0)
+
+                count_hist = hist.Clone(f"{hist.GetName()}_counts")
+                count_hist.SetDirectory(0)
+                scale_factor = default_scale_to / integral
+                hist.Scale(scale_factor)
+                apply_poisson_errors_from_counts(hist, count_hist, scale_factor=scale_factor)
 
                 x_range = job.get("x_range")
                 if x_range and len(x_range) == 2:
                     hist.GetXaxis().SetRangeUser(float(x_range[0]), float(x_range[1]))
-
-                rebin_factor = int(job.get("rebin", default_rebin))
-                if rebin_factor > 1:
-                    hist = hist.Rebin(rebin_factor, f"{hist.GetName()}_rebin")
-                    hist.SetDirectory(0)
 
                 era_hists[era_key] = hist
                 summary[job_name][era_key] = {
                     "status": "ok",
                     "used_runs": used_runs,
                     "integral_before_scale": float(integral),
+                    "scale_factor": float(scale_factor),
                 }
             except Exception as exc:
                 summary[job_name][era_key] = {"status": "error", "message": str(exc)}
