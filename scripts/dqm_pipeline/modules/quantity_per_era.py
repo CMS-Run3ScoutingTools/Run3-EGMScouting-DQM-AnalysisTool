@@ -200,8 +200,8 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
     reference_hist = era_hists[reference_era]
     reference_label = source_display_label(era_sources[reference_era])
     ratio_title = str(job.get("ratio_title", f"other / {reference_label}"))
-    band_fill_style = int(job.get("unc_band_fill_style", 3004))
-    band_fill_alpha = float(job.get("unc_band_alpha", 0.2))
+    band_fill_style = int(job.get("unc_band_fill_style", 3354))
+    band_fill_alpha = float(job.get("unc_band_alpha", 0.10))
     band_xerr_fraction = float(job.get("unc_band_xerr_fraction", 1.0))
 
     canvas = CMS.cmsDiCanvas(
