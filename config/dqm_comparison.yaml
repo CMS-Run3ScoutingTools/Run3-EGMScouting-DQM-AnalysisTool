@@ -1,6 +1,6 @@
 tag: EGM_Scouting_DQM_JIRA_3746
 resonance: resonanceZ
-output_dir: plot_DQM_check_3746
+output_dir: /eos/user/t/tihsu/database/plot_DQM_check_3746
 
 preprocess_dqmio:
   enabled: true

@@ -41,8 +41,31 @@ def _workflow_path(cfg, era, era_cfg, preprocess_cfg):
     return f"/{sanitize(str(cfg.get('tag', 'DQMIO2ROOT')))}/{sanitize(str(era_cfg.get('label', era)))}/DQMIO2ROOT"
 
 
+def _as_cmssw_source_uri(path_str):
+    value = str(path_str).strip()
+    if not value:
+        return None
+    if value.startswith(("root://", "file:")):
+        return value
+    if value.startswith("/eos/cms/"):
+        return f"root://eoscms.cern.ch//{value.lstrip('/')}"
+    if value.startswith("/store/"):
+        return f"root://cms-xrd-global.cern.ch//{value.lstrip('/')}"
+    if value.startswith("/"):
+        return f"file:{value}"
+    return value
+
+
 def _write_cmsrun_cfg(cfg_path, input_files, workflow, force_run_number, convention):
-    input_literal = ",\n        ".join(repr(str(x)) for x in input_files)
+    normalized_inputs = []
+    for item in input_files:
+        uri = _as_cmssw_source_uri(item)
+        if uri:
+            normalized_inputs.append(uri)
+    if not normalized_inputs:
+        raise RuntimeError("No valid DQMIO input files remained after CMSSW URI normalization.")
+
+    input_literal = ",\n        ".join(repr(str(x)) for x in normalized_inputs)
     cfg_text = f"""import FWCore.ParameterSet.Config as cms
 
 process = cms.Process("DQMCONVERT")
@@ -69,6 +92,7 @@ process.dqmSaver = cms.EDAnalyzer(
 process.p = cms.Path(process.dqmSaver)
 """
     cfg_path.write_text(cfg_text, encoding="utf-8")
+    return normalized_inputs
 
 
 def _find_converted_root(workdir, force_run_number):
@@ -124,7 +148,7 @@ def _build_cmssw_subprocess_env(preprocess_cfg):
 
     cmssw_base = preprocess_cfg.get("cmssw_base", os.environ.get("CMSSW_BASE"))
     if cmssw_base:
-        env["CMSSW_BASE"] = str(cmssw_base)
+        env["CMSSW_BASE"] = str(Path(str(cmssw_base)).expanduser())
 
     if not env.get("PATH"):
         env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -235,14 +259,17 @@ def preprocess_dqmio_inputs(cfg, config_dir, strict=False, progress=None):
 
             workflow = _workflow_path(cfg, era, era_cfg, preprocess_cfg)
             cfg_path = era_dir / "convert_dqmio_cfg.py"
+            inputs_path = era_dir / "input_files.txt"
             log_path = era_dir / "cmsRun.log"
-            _write_cmsrun_cfg(
+            normalized_inputs = _write_cmsrun_cfg(
                 cfg_path=cfg_path,
                 input_files=input_files,
                 workflow=workflow,
                 force_run_number=force_run_number,
                 convention=convention,
             )
+            inputs_path.write_text("".join(f"{item}\n" for item in normalized_inputs), encoding="utf-8")
+            emit_log(progress, f"[preprocess_dqmio] era={era}: first input {normalized_inputs[0]}", style="bright_black")
 
             emit_log(progress, f"[preprocess_dqmio] era={era}: cmsRun convert {len(input_files)} file(s)", style="bright_black")
             returncode = _run_cmsrun(
