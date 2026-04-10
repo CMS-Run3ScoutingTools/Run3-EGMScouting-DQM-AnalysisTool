@@ -214,6 +214,7 @@ def preprocess_dqmio_inputs(cfg, config_dir, strict=False, progress=None):
     cmsrun_env = _build_cmssw_subprocess_env(preprocess_cfg)
     convention = str(preprocess_cfg.get("convention", "Offline"))
     skip_existing = bool(preprocess_cfg.get("skip_existing", True))
+    reused_count = 0
 
     for era in selected_eras:
         era_cfg = cfg["eras"][era]
@@ -239,6 +240,7 @@ def preprocess_dqmio_inputs(cfg, config_dir, strict=False, progress=None):
         output_file = era_dir / f"{sanitize(str(era))}_legacy.root"
         if skip_existing and output_file.exists():
             emit_log(progress, f"[preprocess_dqmio] era={era}: reuse existing {output_file}", style="bright_black")
+            reused_count += 1
         else:
             if cmsrun_env_command and "CMSSW_BASE" in cmsrun_env_command and not (cmsrun_env or {}).get("CMSSW_BASE"):
                 raise RuntimeError(
@@ -306,4 +308,9 @@ def preprocess_dqmio_inputs(cfg, config_dir, strict=False, progress=None):
         if progress is not None and task_id is not None:
             progress.update(task_id, advance=1)
 
+    emit_log(
+        progress,
+        f"[preprocess_dqmio] done reused={reused_count}/{len(selected_eras)} output_dir={preprocess_root}",
+        style="bright_black",
+    )
     return cfg
