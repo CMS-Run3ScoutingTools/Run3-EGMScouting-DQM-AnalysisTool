@@ -34,8 +34,8 @@ def make_error_band(hist, name, color):
     band = hist.Clone(name)
     band.SetDirectory(0)
     band.SetLineColor(color)
-    band.SetFillColorAlpha(color, 0.25)
-    band.SetFillStyle(1001)
+    band.SetFillColorAlpha(color, 0.18)
+    band.SetFillStyle(3354)
     band.SetMarkerSize(0)
     band.SetLineWidth(0)
     return band
@@ -212,7 +212,7 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
         color = COLOR_TEMPLATE[idx % len(COLOR_TEMPLATE)]
         band = make_error_band(hist, f"{hist.GetName()}_band", color)
         register_canvas_input(canvas, f"band::{era_key}", band)
-        CMS.cmsDraw(band, "E2", lcolor=color, fcolor=color, fstyle=1001, lwidth=0, msize=0)
+        CMS.cmsDraw(band, "E2", lcolor=color, fcolor=color, fstyle=3354, lwidth=0, msize=0)
         register_canvas_input(canvas, f"hist::{era_key}", hist)
         CMS.cmsDraw(hist, "HIST SAME", lcolor=color, msize=0, lwidth=3, fstyle=0)
         legend.AddEntry(hist, source_display_label(era_sources[era_key]), "L")
@@ -238,7 +238,7 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
             "E2" if first_ratio else "E2 SAME",
             lcolor=color,
             fcolor=color,
-            fstyle=1001,
+            fstyle=3354,
             lwidth=0,
             msize=0,
         )
