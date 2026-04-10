@@ -106,7 +106,7 @@ def expand_jobs(section):
     return expanded
 
 
-def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base):
+def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False):
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(str(plotting.get("energy_tev", cfg.get("energy_tev", 13.6))))
@@ -115,8 +115,7 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base):
     quantity = str(job["quantity"])
     x_title = str(job.get("x_title", quantity))
     y_title = str(job.get("y_title", "A.U."))
-    logy = bool(job.get("logy", True))
-    y_min = float(job.get("ymin", 0.01))
+    y_min = float(job.get("ymin", 0.01 if logy else 0.0))
     ratio_ymin = float(job.get("ratio_ymin", 0.5))
     ratio_ymax = float(job.get("ratio_ymax", 1.5))
 
@@ -150,9 +149,11 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base):
             y_min = max(float(job.get("ymin_floor", 1e-4)), visible_ymin / float(job.get("ymin_divisor", 5.0)))
         else:
             y_min = float(job.get("ymin_linear", 0.0))
+    ymax_scale_default = 5.0 if logy else 1.18
+    min_span_default = 10.0 if logy else 1.05
     y_max = max(
-        ymax * float(job.get("ymax_scale", 5.0 if logy else 1.35)),
-        y_min * float(job.get("min_y_span_factor", 10.0 if logy else 1.1)),
+        ymax * float(job.get("ymax_scale_log" if logy else "ymax_scale_linear", job.get("ymax_scale", ymax_scale_default))),
+        y_min * float(job.get("min_y_span_factor_log" if logy else "min_y_span_factor_linear", job.get("min_y_span_factor", min_span_default))),
     )
 
     ordered_eras = [era_key for era_key in era_sources if era_key in era_hists]
@@ -215,8 +216,9 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base):
     register_canvas_input(canvas, "ratio_unity", ratio_unity)
     CMS.cmsDraw(ratio_unity, "HIST" if first_ratio else "HIST SAME", lcolor=ROOT.kBlack, lwidth=2, lstyle=2, fstyle=0)
 
-    CMS.SaveCanvas(canvas, str(out_base.with_suffix(".png")), close=False)
-    CMS.SaveCanvas(canvas, str(out_base.with_suffix(".pdf")))
+    suffix = "_log" if logy else "_linear"
+    CMS.SaveCanvas(canvas, str(out_base.with_name(f"{out_base.name}{suffix}").with_suffix(".png")), close=False)
+    CMS.SaveCanvas(canvas, str(out_base.with_name(f"{out_base.name}{suffix}").with_suffix(".pdf")))
 
 
 def run_module(cfg, era_sources, out_root, strict=False, progress=None):
@@ -309,7 +311,12 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
         if era_hists:
             ordered_hists = {era_key: era_hists[era_key] for era_key in era_sources if era_key in era_hists}
             out_base = out_dir / sanitize(hist_name)
-            plot_quantity_per_era(cfg, job, ordered_hists, era_sources, out_base)
+            save_linear = bool(job.get("save_linear", section.get("save_linear", True)))
+            save_log = bool(job.get("save_log", section.get("save_log", True)))
+            if save_linear:
+                plot_quantity_per_era(cfg, job, ordered_hists, era_sources, out_base, logy=False)
+            if save_log:
+                plot_quantity_per_era(cfg, job, ordered_hists, era_sources, out_base, logy=True)
             usable = len(ordered_hists)
             skipped = len(era_sources) - usable
             emit_log(progress, f"[{MODULE_NAME}] job done: {job_name} usable_eras={usable} skipped_eras={skipped}", style="blue")
