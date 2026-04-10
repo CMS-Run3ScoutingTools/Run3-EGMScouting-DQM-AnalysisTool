@@ -6,6 +6,7 @@ preprocess_dqmio:
   enabled: true
   output_subdir: preprocessed_dqmio
   cmsrun_bin: cmsRun
+  env_command: source /cvmfs/cms.cern.ch/cmsset_default.sh && cd ${CMSSW_BASE} && eval `scram runtime -sh`
   convention: Offline
   workflow_template: /RelVal/ScoutingPFMonitor/{era}
   skip_existing: true

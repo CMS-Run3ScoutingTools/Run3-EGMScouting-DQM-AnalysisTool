@@ -83,6 +83,39 @@ def _find_converted_root(workdir, force_run_number):
     return candidates[-1]
 
 
+def _default_cmssw_env_command():
+    cmssw_base = os.environ.get("CMSSW_BASE")
+    if not cmssw_base:
+        return None
+    return (
+        "source /cvmfs/cms.cern.ch/cmsset_default.sh && "
+        f"cd {cmssw_base} && "
+        "eval `scram runtime -sh`"
+    )
+
+
+def _run_cmsrun(cfg_path, cmsrun_bin, era_dir, log_path, env_command=None):
+    with log_path.open("w", encoding="utf-8") as log_handle:
+        if env_command:
+            cmd = f"{env_command} && {cmsrun_bin} {cfg_path.name}"
+            proc = subprocess.run(
+                ["bash", "--noprofile", "--norc", "-lc", cmd],
+                cwd=str(era_dir),
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+        else:
+            proc = subprocess.run(
+                [cmsrun_bin, str(cfg_path)],
+                cwd=str(era_dir),
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+    return proc.returncode
+
+
 def preprocess_dqmio_inputs(cfg, config_dir, strict=False, progress=None):
     preprocess_cfg = cfg.get("preprocess_dqmio")
     if not preprocess_cfg or not preprocess_cfg.get("enabled", False):
@@ -108,6 +141,7 @@ def preprocess_dqmio_inputs(cfg, config_dir, strict=False, progress=None):
         task_id = progress.add_task("Preprocess DQMIO", total=len(selected_eras))
 
     cmsrun_bin = str(preprocess_cfg.get("cmsrun_bin", "cmsRun"))
+    cmsrun_env_command = preprocess_cfg.get("env_command") or _default_cmssw_env_command()
     convention = str(preprocess_cfg.get("convention", "Offline"))
     skip_existing = bool(preprocess_cfg.get("skip_existing", True))
 
@@ -136,9 +170,12 @@ def preprocess_dqmio_inputs(cfg, config_dir, strict=False, progress=None):
         if skip_existing and output_file.exists():
             emit_log(progress, f"[preprocess_dqmio] era={era}: reuse existing {output_file}", style="bright_black")
         else:
-            if shutil.which(cmsrun_bin) is None:
+            if cmsrun_env_command:
+                emit_log(progress, f"[preprocess_dqmio] era={era}: using CMSSW env command", style="bright_black")
+            elif shutil.which(cmsrun_bin) is None:
                 raise RuntimeError(
-                    f"[preprocess_dqmio] cmsRun binary '{cmsrun_bin}' not found in PATH. Set preprocess_dqmio.cmsrun_bin or prepare a CMSSW environment."
+                    f"[preprocess_dqmio] cmsRun binary '{cmsrun_bin}' not found in PATH. "
+                    "Set preprocess_dqmio.env_command or prepare a CMSSW environment."
                 )
 
             workflow = _workflow_path(cfg, era, era_cfg, preprocess_cfg)
@@ -153,17 +190,16 @@ def preprocess_dqmio_inputs(cfg, config_dir, strict=False, progress=None):
             )
 
             emit_log(progress, f"[preprocess_dqmio] era={era}: cmsRun convert {len(input_files)} file(s)", style="bright_black")
-            with log_path.open("w", encoding="utf-8") as log_handle:
-                proc = subprocess.run(
-                    [cmsrun_bin, str(cfg_path)],
-                    cwd=str(era_dir),
-                    stdout=log_handle,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                )
-            if proc.returncode != 0:
+            returncode = _run_cmsrun(
+                cfg_path=cfg_path,
+                cmsrun_bin=cmsrun_bin,
+                era_dir=era_dir,
+                log_path=log_path,
+                env_command=cmsrun_env_command,
+            )
+            if returncode != 0:
                 raise RuntimeError(
-                    f"[preprocess_dqmio] era={era}: cmsRun failed (rc={proc.returncode}). See {log_path}"
+                    f"[preprocess_dqmio] era={era}: cmsRun failed (rc={returncode}). See {log_path}"
                 )
 
             produced = _find_converted_root(era_dir, force_run_number)
