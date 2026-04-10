@@ -134,10 +134,12 @@ def _build_cmssw_subprocess_env(preprocess_cfg):
 def _run_cmsrun(cfg_path, cmsrun_bin, era_dir, log_path, env_command=None, env=None):
     with log_path.open("w", encoding="utf-8") as log_handle:
         if env_command:
+            era_dir_abs = str(Path(era_dir).resolve())
+            cfg_path_abs = str(Path(cfg_path).resolve())
             cmd = (
                 f"{env_command} && "
-                f"cd {str(era_dir)!r} && "
-                f"{cmsrun_bin} {str(cfg_path.resolve())!r}"
+                f"cd {era_dir_abs!r} && "
+                f"{cmsrun_bin} {cfg_path_abs!r}"
             )
             proc = subprocess.run(
                 ["bash", "--noprofile", "--norc", "-lc", cmd],
