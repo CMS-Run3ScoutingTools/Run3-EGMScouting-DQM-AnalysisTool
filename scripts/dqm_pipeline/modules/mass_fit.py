@@ -32,7 +32,7 @@ def source_plot_lumi_text(cfg, source):
     energy = cfg.get("plotting", {}).get("energy_tev", cfg.get("energy_tev", 13.6))
     label = source_display_label(source)
     if source.get("lumi_fb") is not None:
-        return f"{label} {float(source['lumi_fb']):.2f} fb$^{{-1}}$ ({energy} TeV)"
+        return f"{label} {float(source['lumi_fb']):.2f} $\\mathrm{{fb}}^{{-1}}$ ({energy} TeV)"
     return f"{label} ({energy} TeV)"
 
 
@@ -164,27 +164,72 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     bkg_integral = float(np.trapz(bkg_curve, x_fit))
     sig_integral = float(np.trapz(sig_curve, x_fit))
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots()
     ax.errorbar(x_vals, y_vals, yerr=y_errs, fmt="ko", label="Data", markersize=3)
     ax.plot(x_fit, tot_curve, "m-", label="Signal + Background")
     ax.plot(x_fit, bkg_curve, color="brown", label="Background")
-    ax.plot(x_fit, sig_curve, color="cyan", label="Signal (Crystal Ball)")
+    ax.plot(x_fit, sig_curve, color="cyan", label="Signal(Crystal Ball)")
     ax.set_xlabel("Dielectron mass [GeV]")
     ax.set_ylabel("Events / 1 GeV")
     ax.grid()
     ax.legend()
 
     hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
-    hep.cms.lumitext(plot_lumi_text or f"{era} {era_label}", ax=ax)
+    hep.cms.lumitext(plot_lumi_text or f"{era_label}", ax=ax)
 
-    ax.text(0.03, 0.84, f"Bkg integral: {bkg_integral:.0f}", transform=ax.transAxes, fontsize=10)
-    ax.text(0.03, 0.78, f"Signal integral: {sig_integral:.0f}", transform=ax.transAxes, fontsize=10)
-    ax.text(0.03, 0.72, f"Mean: {popt[5]:.2f} GeV", transform=ax.transAxes, fontsize=10)
-    ax.text(0.03, 0.66, f"Sigma: {popt[6]:.2f} GeV", transform=ax.transAxes, fontsize=10)
-    ax.text(0.03, 0.60, f"Relative width: {100.0 * popt[6] / popt[5]:.2f}%", transform=ax.transAxes, fontsize=10)
+    plt.text(
+        0.05,
+        0.80,
+        f"background integral: {bkg_integral:.0f}",
+        transform=plt.gca().transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="left",
+        color="black",
+    )
+    plt.text(
+        0.05,
+        0.75,
+        f"signal integral: {sig_integral:.0f}",
+        transform=plt.gca().transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="left",
+        color="black",
+    )
+    plt.text(
+        0.05,
+        0.70,
+        f"mean: {popt[5]:.1f} GeV",
+        transform=plt.gca().transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="left",
+        color="black",
+    )
+    plt.text(
+        0.05,
+        0.65,
+        f"$\\sigma_{{cb}}$: {popt[6]:.1f} GeV",
+        transform=plt.gca().transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="left",
+        color="black",
+    )
+    plt.text(
+        0.05,
+        0.60,
+        f"relative width: {100.0 * popt[6] / popt[5]:.1f} %",
+        transform=plt.gca().transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        horizontalalignment="left",
+        color="black",
+    )
 
     fig.tight_layout()
-    fig.savefig(out_png, dpi=140)
+    fig.savefig(out_png)
     plt.close(fig)
 
     names = ["bkg_amp", "bkg_slope", "cb_amp", "cb_alpha", "cb_n", "cb_mean", "cb_sigma"]

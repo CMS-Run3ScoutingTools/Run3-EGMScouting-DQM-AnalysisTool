@@ -246,7 +246,7 @@ def draw_filter_canvas(
     energy = str(plotting.get("energy_tev", cfg.get("energy_tev", 13.6)))
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(energy)
-    CMS.SetLumi(source_lumi_label(cfg, source))
+    CMS.SetLumi(str(plotting.get("lumi_text", source_lumi_label(cfg, source))))
 
     axis = str(job.get("axis", "pt")).lower()
     pt_order = job.get("pt_order", "leading")
@@ -265,8 +265,8 @@ def draw_filter_canvas(
         "efficiency",
         "w. prev",
         square=CMS.kSquare,
-        extraSpace=0.08,
-        iPos=11,
+        extraSpace=0.0,
+        iPos=0,
     )
 
     palette_hex = [
@@ -278,7 +278,7 @@ def draw_filter_canvas(
     marker_styles = [20, 21, 22, 23, 33, 34, 29, 30]
 
     canvas.cd(1)
-    legend = make_compact_legend(0.43, 0.18, 0.93, 0.50, text_size=0.03, ncols=legend_cols)
+    legend = make_compact_legend(0.40, 0.20, 0.80, 0.40, text_size=0.02, ncols=legend_cols)
     register_canvas_input(canvas, "legend", legend)
 
     set_eff_style(base_eff, ROOT.kBlack, 20, marker_size=1.05, line_style=1)
@@ -320,7 +320,7 @@ def draw_filter_era_comparison_canvas(
     energy = str(plotting.get("energy_tev", cfg.get("energy_tev", 13.6)))
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(energy)
-    CMS.SetLumi(str(plotting.get("lumi_text", f"Run 3 ({energy} TeV)")))
+    CMS.SetLumi(str(plotting.get("lumi_text", f"Run 3")))
 
     sample_eff = next(iter(abs_by_era.values()))
     axis = str(job.get("axis", "pt")).lower()
@@ -339,8 +339,8 @@ def draw_filter_era_comparison_canvas(
         "efficiency",
         "step eff.",
         square=CMS.kSquare,
-        extraSpace=0.08,
-        iPos=11,
+        extraSpace=0.0,
+        iPos=0,
     )
 
     palette_hex = [
@@ -351,7 +351,7 @@ def draw_filter_era_comparison_canvas(
     marker_styles = [20, 24, 25, 26, 27, 28]
 
     canvas.cd(1)
-    legend = make_compact_legend(0.42, 0.62, 0.93, 0.90, text_size=0.020, ncols=legend_cols)
+    legend = make_compact_legend(0.15, 0.70, 0.90, 0.90, text_size=0.02, ncols=3)
     register_canvas_input(canvas, "legend", legend)
     for idx, (era_label, eff) in enumerate(abs_by_era.items()):
         color = palette[idx % len(palette)]
@@ -386,7 +386,7 @@ def draw_run_trend_canvas(
     energy = str(plotting.get("energy_tev", cfg.get("energy_tev", 13.6)))
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(energy)
-    CMS.SetLumi(str(plotting.get("lumi_text", f"Run 3 ({energy} TeV)")))
+    CMS.SetLumi(str(plotting.get("lumi_text", "Run3")))
 
     runs = sorted(
         {
@@ -424,22 +424,16 @@ def draw_run_trend_canvas(
         "Run number",
         "Overall efficiency",
         square=CMS.kSquare,
-        extraSpace=0.08,
-        iPos=11,
+        extraSpace=0.0,
+        iPos=0,
     )
     frame = CMS.GetcmsCanvasHist(canvas)
     frame.GetXaxis().SetLabelSize(0.042)
     frame.GetYaxis().SetLabelSize(0.042)
-    frame.GetXaxis().SetTitleSize(0.050)
-    frame.GetYaxis().SetTitleSize(0.050)
-    frame.GetXaxis().SetTitleOffset(1.00)
-    frame.GetYaxis().SetTitleOffset(1.10)
     frame.GetXaxis().SetNoExponent(True)
     frame.GetXaxis().SetMaxDigits(10)
-    frame.GetXaxis().CenterTitle(True)
-    frame.GetYaxis().CenterTitle(True)
 
-    legend = make_compact_legend(0.52, 0.17, 0.92, 0.40, text_size=0.028, ncols=1)
+    legend = make_compact_legend(0.60, 0.60, 0.90, 0.88, text_size=0.03, ncols=1)
     register_canvas_input(canvas, "legend", legend)
 
     palette_hex = [

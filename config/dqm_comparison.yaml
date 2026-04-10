@@ -1,6 +1,6 @@
-tag: EGM_Scouting_DQM_2026_v3
+tag: EGM_Scouting_DQM_JIRA_3746
 resonance: resonanceZ
-output_dir: plot_DQM2026_check_STEAM
+output_dir: plot_DQM_check_3746
 
 # Optional: estimate lumi_fb automatically with brilcalc.
 lumi:
@@ -14,27 +14,16 @@ lumi:
 
 # Era inputs now come from DAS datasets + run filters.
 eras:
-  2025_eraG:
-    label: Run2025G
+  baseline:
+    label: basline
     year: 2025
-    golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions25/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions25_13p6TeV_Latest.json
-    file_glob: /eos/cms/store/group/comm_dqm/DQMGUI_data/Run2025/ScoutingPFMonitor/*/DQM_*__ScoutingPFMonitor__Run2025G-PromptReco-v1__DQMIO.root
-  2026_eraA:
-    label: Run2026A
-    year: 2026
-    golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions26/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions26_13p6TeV_Latest.json
-    file_glob: /eos/cms/store/group/comm_dqm/DQMGUI_data/Run2026/ScoutingPFMonitor/*/DQM_*__ScoutingPFMonitor__Run2026A-PromptReco-v1__DQMIO.root
-  2026_eraB:
-    label: Run2026B
-    year: 2026
-    golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions26/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions26_13p6TeV_Latest.json
-    file_glob: /eos/cms/store/group/comm_dqm/DQMGUI_data/Run2026/ScoutingPFMonitor/*/DQM_*__ScoutingPFMonitor__Run2026B-PromptReco-v1__DQMIO.root
-  2026_eraC:
-    label: Run2026C
-    year: 2026
-    golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions26/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions26_13p6TeV_Latest.json
-    file_glob: /eos/cms/store/group/comm_dqm/DQMGUI_data/Run2026/ScoutingPFMonitor/*/DQM_*__ScoutingPFMonitor__Run2026C-PromptReco-v1__DQMIO.root
-
+    golden_json: null
+    file_glob: /eos/cms//store/relval/CMSSW_16_0_4/ScoutingPFMonitor/DQMIO/160X_dataRun3_Prompt_frozen260223_v1_SpecialRV293_Baseline_RelVal_ScoutingPFMonitor2025G-v1/*/*.root
+  target:
+    label: target
+    year: 2025
+    golden_json: null
+    file_glob: /eos/cms//store/relval/CMSSW_16_0_4/ScoutingPFMonitor/DQMIO/160X_dataRun3_Prompt_frozen260223_v1_SpecialRV293_customizeHLTfor49436_RelVal_ScoutingPFMonitor2025G-v2/*/*.root
     # Optional: omit run-requirement to use all runs from DAS (then golden_json filter still applies).
 #    run-requirement:
 #      min: 398000
