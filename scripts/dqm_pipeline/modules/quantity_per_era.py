@@ -30,7 +30,7 @@ def apply_poisson_errors_from_counts(hist, count_hist, scale_factor=1.0):
         hist.SetBinError(idx, error)
 
 
-def make_error_band_graph(hist, name, color):
+def make_error_band_graph(hist, name, color, fill_style=3004, fill_alpha=0.08, xerr_fraction=0.35):
     points = []
     axis = hist.GetXaxis()
     for idx in range(1, hist.GetNbinsX() + 1):
@@ -39,7 +39,7 @@ def make_error_band_graph(hist, name, color):
         if y_val <= 0 and y_err <= 0:
             continue
         x_center = float(axis.GetBinCenter(idx))
-        x_err = 0.5 * float(axis.GetBinWidth(idx))
+        x_err = float(xerr_fraction) * 0.5 * float(axis.GetBinWidth(idx))
         points.append((x_center, y_val, x_err, y_err))
 
     graph = ROOT.TGraphAsymmErrors(len(points))
@@ -49,9 +49,9 @@ def make_error_band_graph(hist, name, color):
         graph.SetPointError(point_idx, x_err, x_err, y_err, y_err)
 
     graph.SetLineColor(color)
-    graph.SetLineWidth(1)
-    graph.SetFillColorAlpha(color, 0.16)
-    graph.SetFillStyle(3354)
+    graph.SetLineWidth(0)
+    graph.SetFillColorAlpha(color, float(fill_alpha))
+    graph.SetFillStyle(int(fill_style))
     graph.SetMarkerSize(0)
     return graph
 
@@ -200,6 +200,9 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
     reference_hist = era_hists[reference_era]
     reference_label = source_display_label(era_sources[reference_era])
     ratio_title = str(job.get("ratio_title", f"other / {reference_label}"))
+    band_fill_style = int(job.get("unc_band_fill_style", 3004))
+    band_fill_alpha = float(job.get("unc_band_alpha", 0.05))
+    band_xerr_fraction = float(job.get("unc_band_xerr_fraction", 1.0))
 
     canvas = CMS.cmsDiCanvas(
         "",
@@ -225,7 +228,14 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
     for idx, era_key in enumerate(ordered_eras):
         hist = era_hists[era_key]
         color = COLOR_TEMPLATE[idx % len(COLOR_TEMPLATE)]
-        band = make_error_band_graph(hist, f"{hist.GetName()}_band", color)
+        band = make_error_band_graph(
+            hist,
+            f"{hist.GetName()}_band",
+            color,
+            fill_style=band_fill_style,
+            fill_alpha=band_fill_alpha,
+            xerr_fraction=band_xerr_fraction,
+        )
         register_canvas_input(canvas, f"band::{era_key}", band)
         band.Draw("2 SAME")
         register_canvas_input(canvas, f"hist::{era_key}", hist)
@@ -246,7 +256,14 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
         ratio.SetDirectory(0)
         ratio.Divide(reference_hist)
         color = COLOR_TEMPLATE[idx % len(COLOR_TEMPLATE)]
-        ratio_band = make_error_band_graph(ratio, f"{ratio.GetName()}_band", color)
+        ratio_band = make_error_band_graph(
+            ratio,
+            f"{ratio.GetName()}_band",
+            color,
+            fill_style=band_fill_style,
+            fill_alpha=band_fill_alpha,
+            xerr_fraction=band_xerr_fraction,
+        )
         register_canvas_input(canvas, f"ratio_band::{era_key}", ratio_band)
         ratio_band.Draw("2 SAME")
         register_canvas_input(canvas, f"ratio::{era_key}", ratio)
