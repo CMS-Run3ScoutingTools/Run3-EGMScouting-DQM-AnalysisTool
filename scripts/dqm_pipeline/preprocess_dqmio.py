@@ -94,7 +94,44 @@ def _default_cmssw_env_command():
     )
 
 
-def _run_cmsrun(cfg_path, cmsrun_bin, era_dir, log_path, env_command=None):
+def _build_cmssw_subprocess_env(preprocess_cfg):
+    if not bool(preprocess_cfg.get("clean_env", True)):
+        return None
+
+    env = dict(os.environ)
+    unset_defaults = {
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "PYTHONUSERBASE",
+        "PYTHONNOUSERSITE",
+        "VIRTUAL_ENV",
+        "CONDA_PREFIX",
+        "CONDA_DEFAULT_ENV",
+        "__PYVENV_LAUNCHER__",
+        "ROOTSYS",
+        "LD_PRELOAD",
+    }
+    for key in unset_defaults:
+        env.pop(key, None)
+
+    # LCG/env.sh style runtime often poisons cmsRun bootstrap; let scram rebuild these.
+    for key in ("LD_LIBRARY_PATH", "LIBRARY_PATH", "CPLUS_INCLUDE_PATH", "C_INCLUDE_PATH"):
+        env.pop(key, None)
+
+    for key in preprocess_cfg.get("unset_env_vars", []):
+        env.pop(str(key), None)
+
+    cmssw_base = preprocess_cfg.get("cmssw_base", os.environ.get("CMSSW_BASE"))
+    if cmssw_base:
+        env["CMSSW_BASE"] = str(cmssw_base)
+
+    if not env.get("PATH"):
+        env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    return env
+
+
+def _run_cmsrun(cfg_path, cmsrun_bin, era_dir, log_path, env_command=None, env=None):
     with log_path.open("w", encoding="utf-8") as log_handle:
         if env_command:
             cmd = f"{env_command} && {cmsrun_bin} {cfg_path.name}"
@@ -104,6 +141,7 @@ def _run_cmsrun(cfg_path, cmsrun_bin, era_dir, log_path, env_command=None):
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 text=True,
+                env=env,
             )
         else:
             proc = subprocess.run(
@@ -112,6 +150,7 @@ def _run_cmsrun(cfg_path, cmsrun_bin, era_dir, log_path, env_command=None):
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 text=True,
+                env=env,
             )
     return proc.returncode
 
@@ -142,6 +181,7 @@ def preprocess_dqmio_inputs(cfg, config_dir, strict=False, progress=None):
 
     cmsrun_bin = str(preprocess_cfg.get("cmsrun_bin", "cmsRun"))
     cmsrun_env_command = preprocess_cfg.get("env_command") or _default_cmssw_env_command()
+    cmsrun_env = _build_cmssw_subprocess_env(preprocess_cfg)
     convention = str(preprocess_cfg.get("convention", "Offline"))
     skip_existing = bool(preprocess_cfg.get("skip_existing", True))
 
@@ -170,8 +210,17 @@ def preprocess_dqmio_inputs(cfg, config_dir, strict=False, progress=None):
         if skip_existing and output_file.exists():
             emit_log(progress, f"[preprocess_dqmio] era={era}: reuse existing {output_file}", style="bright_black")
         else:
+            if cmsrun_env_command and "CMSSW_BASE" in cmsrun_env_command and not (cmsrun_env or {}).get("CMSSW_BASE"):
+                raise RuntimeError(
+                    "[preprocess_dqmio] CMSSW_BASE is not set. Set preprocess_dqmio.cmssw_base "
+                    "or run from a CMSSW area."
+                )
             if cmsrun_env_command:
-                emit_log(progress, f"[preprocess_dqmio] era={era}: using CMSSW env command", style="bright_black")
+                emit_log(
+                    progress,
+                    f"[preprocess_dqmio] era={era}: using CMSSW env command (clean_env={bool(preprocess_cfg.get('clean_env', True))})",
+                    style="bright_black",
+                )
             elif shutil.which(cmsrun_bin) is None:
                 raise RuntimeError(
                     f"[preprocess_dqmio] cmsRun binary '{cmsrun_bin}' not found in PATH. "
@@ -196,6 +245,7 @@ def preprocess_dqmio_inputs(cfg, config_dir, strict=False, progress=None):
                 era_dir=era_dir,
                 log_path=log_path,
                 env_command=cmsrun_env_command,
+                env=cmsrun_env,
             )
             if returncode != 0:
                 raise RuntimeError(
