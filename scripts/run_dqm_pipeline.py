@@ -9,6 +9,7 @@ import mplhep as hep
 
 from dqm_pipeline.core import build_output_root, emit_log, prepare_era_sources
 from dqm_pipeline.modules import MODULE_REGISTRY
+from dqm_pipeline.preprocess_dqmio import preprocess_dqmio_inputs
 
 try:
     from rich.progress import (
@@ -35,6 +36,7 @@ def parse_args():
         help="Run only selected module(s). Can be repeated.",
     )
     parser.add_argument("--strict", action="store_true", help="Fail immediately on missing input/hist.")
+    parser.add_argument("--preprocess-only", action="store_true", help="Run preprocessing stage only and exit.")
     parser.add_argument("--resolve-only", action="store_true", help="Resolve eras/runs/files and exit.")
     parser.add_argument("--no-progress", action="store_true", help="Disable rich progress bar.")
     return parser.parse_args()
@@ -101,6 +103,18 @@ def main():
     print(f"[pipeline] out_root={out_root}")
 
     with progress_context(enabled=not args.no_progress) as progress:
+        emit_log(progress, "[pipeline] stage: preprocess inputs", style="bold cyan")
+        cfg = preprocess_dqmio_inputs(
+            cfg=cfg,
+            config_dir=config_dir,
+            strict=args.strict,
+            progress=progress,
+        )
+
+        if args.preprocess_only:
+            emit_log(progress, "[pipeline] preprocess-only mode done.", style="bold green")
+            return
+
         emit_log(progress, "[pipeline] stage: resolve eras", style="bold cyan")
         era_sources = prepare_era_sources(
             cfg=cfg,

@@ -2,6 +2,14 @@ tag: EGM_Scouting_DQM_JIRA_3746
 resonance: resonanceZ
 output_dir: plot_DQM_check_3746
 
+preprocess_dqmio:
+  enabled: true
+  output_subdir: preprocessed_dqmio
+  cmsrun_bin: cmsRun
+  convention: Offline
+  workflow_template: /RelVal/ScoutingPFMonitor/{era}
+  skip_existing: true
+
 # Optional: estimate lumi_fb automatically with brilcalc.
 lumi:
   use_brilcalc: true
@@ -17,12 +25,16 @@ eras:
   baseline:
     label: basline
     year: 2025
+    input_format: dqmio
     golden_json: null
+    run_number: 333334
     file_glob: /eos/cms//store/relval/CMSSW_16_0_4/ScoutingPFMonitor/DQMIO/160X_dataRun3_Prompt_frozen260223_v1_SpecialRV293_Baseline_RelVal_ScoutingPFMonitor2025G-v1/*/*.root
   target:
     label: target
     year: 2025
+    input_format: dqmio
     golden_json: null
+    run_number: 333334
     file_glob: /eos/cms//store/relval/CMSSW_16_0_4/ScoutingPFMonitor/DQMIO/160X_dataRun3_Prompt_frozen260223_v1_SpecialRV293_customizeHLTfor49436_RelVal_ScoutingPFMonitor2025G-v2/*/*.root
     # Optional: omit run-requirement to use all runs from DAS (then golden_json filter still applies).
 #    run-requirement:

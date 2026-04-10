@@ -651,6 +651,7 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
     # Optional: if missing/null, no run-based filtering is applied.
     if run_req is None:
         run_req = {}
+    fallback_run_number = era_cfg.get("run_number", cfg.get("run_number"))
 
     run_files = defaultdict(list)
     stage_task = None
@@ -668,12 +669,11 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
         for file_path in matched_files:
             run = extract_run_from_name(file_path)
             if run is None:
-                legacy_run = cfg.get("run_number")
-                if legacy_run is None:
+                if fallback_run_number is None:
                     raise RuntimeError(
-                        f"Era {era}: cannot infer run from file name and no top-level run_number provided."
+                        f"Era {era}: cannot infer run from file name and no run_number provided."
                     )
-                run = int(legacy_run)
+                run = int(fallback_run_number)
             run_files[run].append(as_root_uri(file_path, redirector))
 
     if "run_files" in era_cfg:
@@ -693,11 +693,13 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
         for file_path in matched_files:
             run = extract_run_from_name(file_path)
             if run is None:
-                msg = f"Era {era}: cannot infer run from file '{file_path}'."
-                if strict:
-                    raise RuntimeError(msg)
-                _emit(progress, f"[resolve][WARN] {msg} Skipping file.", style="yellow")
-                continue
+                if fallback_run_number is None:
+                    msg = f"Era {era}: cannot infer run from file '{file_path}'."
+                    if strict:
+                        raise RuntimeError(msg)
+                    _emit(progress, f"[resolve][WARN] {msg} Skipping file.", style="yellow")
+                    continue
+                run = int(fallback_run_number)
             run_files[run].append(as_root_uri(file_path, redirector))
 
     if "file_glob" in era_cfg:
@@ -712,11 +714,13 @@ def resolve_era_source(era, era_cfg, cfg, config_dir, golden_cache, strict=False
         for file_path in matched_files:
             run = extract_run_from_name(file_path)
             if run is None:
-                msg = f"Era {era}: cannot infer run from file '{file_path}'."
-                if strict:
-                    raise RuntimeError(msg)
-                _emit(progress, f"[resolve][WARN] {msg} Skipping file.", style="yellow")
-                continue
+                if fallback_run_number is None:
+                    msg = f"Era {era}: cannot infer run from file '{file_path}'."
+                    if strict:
+                        raise RuntimeError(msg)
+                    _emit(progress, f"[resolve][WARN] {msg} Skipping file.", style="yellow")
+                    continue
+                run = int(fallback_run_number)
             run_files[run].append(as_root_uri(file_path, redirector))
 
     dataset = era_cfg.get("das", era_cfg.get("DAS"))

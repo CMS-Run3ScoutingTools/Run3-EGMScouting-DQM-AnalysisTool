@@ -55,6 +55,26 @@ After loading, run pipeline commands normally.
 
 The script extracts run numbers from DQMIO filenames, filters runs, and aggregates histograms across selected runs per era.
 
+For RelVal-style DQMIO files whose filenames do not encode the run number, enable preprocessing and set `run_number` explicitly. The preprocessing step converts DQMIO into a legacy DQM ROOT file that the rest of the framework can read normally.
+
+Example preprocessing fields:
+
+```yaml
+preprocess_dqmio:
+  enabled: true
+  output_subdir: preprocessed_dqmio
+  cmsrun_bin: cmsRun
+  convention: Offline
+  workflow_template: /RelVal/ScoutingPFMonitor/{era}
+  skip_existing: true
+
+eras:
+  baseline:
+    input_format: dqmio
+    run_number: 333334
+    file_glob: /eos/cms/store/relval/.../*.root
+```
+
 For cross-year comparisons, put all years in the same `eras:` block and assign each one its own `label`, `year`, and `golden_json`.
 See `config/dqm_pipeline_mixed_years.example.yaml`.
 
@@ -112,6 +132,13 @@ Run all enabled modules:
 
 ```bash
 python3 scripts/run_dqm_pipeline.py --config config/dqm_pipeline.yaml
+```
+
+Run preprocessing only:
+
+```bash
+python3 scripts/run_dqm_pipeline.py --config config/dqm_comparison.yaml --preprocess-only
+python3 scripts/preprocess_dqmio.py --config config/dqm_comparison.yaml
 ```
 
 If `rich` is installed, running will show progress bars automatically.
