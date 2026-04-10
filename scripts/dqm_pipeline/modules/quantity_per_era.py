@@ -30,15 +30,30 @@ def apply_poisson_errors_from_counts(hist, count_hist, scale_factor=1.0):
         hist.SetBinError(idx, error)
 
 
-def make_error_band(hist, name, color):
-    band = hist.Clone(name)
-    band.SetDirectory(0)
-    band.SetLineColor(color)
-    band.SetFillStyle(0)
-    band.SetMarkerSize(0)
-    band.SetLineWidth(2)
-    band.SetLineStyle(2)
-    return band
+def make_error_band_graph(hist, name, color):
+    points = []
+    axis = hist.GetXaxis()
+    for idx in range(1, hist.GetNbinsX() + 1):
+        y_val = float(hist.GetBinContent(idx))
+        y_err = float(hist.GetBinError(idx))
+        if y_val <= 0 and y_err <= 0:
+            continue
+        x_center = float(axis.GetBinCenter(idx))
+        x_err = 0.5 * float(axis.GetBinWidth(idx))
+        points.append((x_center, y_val, x_err, y_err))
+
+    graph = ROOT.TGraphAsymmErrors(len(points))
+    graph.SetName(name)
+    for point_idx, (x_center, y_val, x_err, y_err) in enumerate(points):
+        graph.SetPoint(point_idx, x_center, y_val)
+        graph.SetPointError(point_idx, x_err, x_err, y_err, y_err)
+
+    graph.SetLineColor(color)
+    graph.SetLineWidth(1)
+    graph.SetFillColorAlpha(color, 0.16)
+    graph.SetFillStyle(3354)
+    graph.SetMarkerSize(0)
+    return graph
 
 
 def find_populated_xrange(era_hists, margin_bins=1):
@@ -210,9 +225,9 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
     for idx, era_key in enumerate(ordered_eras):
         hist = era_hists[era_key]
         color = COLOR_TEMPLATE[idx % len(COLOR_TEMPLATE)]
-        band = make_error_band(hist, f"{hist.GetName()}_band", color)
+        band = make_error_band_graph(hist, f"{hist.GetName()}_band", color)
         register_canvas_input(canvas, f"band::{era_key}", band)
-        CMS.cmsDraw(band, "E1 X0", lcolor=color, fstyle=0, lwidth=2, lstyle=2, msize=0)
+        band.Draw("2 SAME")
         register_canvas_input(canvas, f"hist::{era_key}", hist)
         CMS.cmsDraw(hist, "HIST SAME", lcolor=color, msize=0, lwidth=3, fstyle=0)
         legend.AddEntry(hist, source_display_label(era_sources[era_key]), "L")
@@ -231,17 +246,9 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
         ratio.SetDirectory(0)
         ratio.Divide(reference_hist)
         color = COLOR_TEMPLATE[idx % len(COLOR_TEMPLATE)]
-        ratio_band = make_error_band(ratio, f"{ratio.GetName()}_band", color)
+        ratio_band = make_error_band_graph(ratio, f"{ratio.GetName()}_band", color)
         register_canvas_input(canvas, f"ratio_band::{era_key}", ratio_band)
-        CMS.cmsDraw(
-            ratio_band,
-            "E1 X0" if first_ratio else "E1 X0 SAME",
-            lcolor=color,
-            fstyle=0,
-            lwidth=2,
-            lstyle=2,
-            msize=0,
-        )
+        ratio_band.Draw("2 SAME")
         register_canvas_input(canvas, f"ratio::{era_key}", ratio)
         draw_opt = "HIST SAME"
         CMS.cmsDraw(ratio, draw_opt, lcolor=color, msize=0, lwidth=3, fstyle=0)
