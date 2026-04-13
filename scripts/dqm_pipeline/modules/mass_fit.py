@@ -171,6 +171,7 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     ax.plot(x_fit, sig_curve, color="cyan", label="Signal(Crystal Ball)")
     ax.set_xlabel("Dielectron mass [GeV]")
     ax.set_ylabel("Events / 1 GeV")
+    ax.set_xlim(float(xmin), float(xmax))
     ax.grid()
     ax.legend(loc="upper right", frameon=False)
 
