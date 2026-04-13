@@ -1,10 +1,9 @@
 from pathlib import Path
 
 import ROOT
+import cmsstyle as CMS
 import yaml
 import numpy as np
-import matplotlib.pyplot as plt
-import mplhep as hep
 
 from dqm_pipeline.core import (
     aggregate_histogram_for_era,
@@ -18,6 +17,20 @@ from dqm_pipeline.core import (
 MODULE_NAME = "tnp_efficiency"
 
 
+COLOR_TEMPLATE = [
+    ROOT.TColor.GetColor("#0072B2"),
+    ROOT.TColor.GetColor("#D55E00"),
+    ROOT.TColor.GetColor("#009E73"),
+    ROOT.TColor.GetColor("#CC79A7"),
+    ROOT.TColor.GetColor("#F0E442"),
+    ROOT.TColor.GetColor("#56B4E9"),
+    ROOT.TColor.GetColor("#E69F00"),
+    ROOT.TColor.GetColor("#999999"),
+]
+
+MARKER_STYLES = [20, 24, 25, 26, 27, 28]
+
+
 def source_display_label(source):
     return str(source.get("display_label", source.get("era", "era")))
 
@@ -26,9 +39,34 @@ def global_plot_lumi_text(cfg):
     plotting = cfg.get("plotting", {})
     if plotting.get("lumi_text"):
         return str(plotting["lumi_text"])
-    energy = plotting.get("energy_tev", cfg.get("energy_tev", 13.6))
-    campaign = plotting.get("campaign_label", cfg.get("campaign_label", "Run 3"))
-    return f"{campaign} ({energy} TeV)"
+    return "Run3"
+
+
+def register_canvas_input(canvas, key, obj):
+    if not hasattr(canvas, "_input_cache"):
+        canvas._input_cache = {}
+    canvas._input_cache[str(key)] = obj
+    return obj
+
+
+def set_eff_style(eff, color, marker, marker_size=1.0, line_style=1):
+    eff.SetLineColor(color)
+    eff.SetMarkerColor(color)
+    eff.SetMarkerStyle(marker)
+    eff.SetMarkerSize(marker_size)
+    eff.SetLineWidth(2)
+    eff.SetLineStyle(line_style)
+
+
+def make_legend(x1, y1, x2, y2, text_size=0.02, ncols=1):
+    legend = CMS.cmsLeg(x1, y1, x2, y2, textSize=text_size)
+    try:
+        legend.SetBorderSize(0)
+        legend.SetFillStyle(0)
+        legend.SetNColumns(ncols)
+    except Exception:
+        pass
+    return legend
 
 
 def default_bins_for_original_behavior(axis, numerator_name):
@@ -96,55 +134,116 @@ def compute_efficiency_points(num_hist, den_hist):
     }
 
 
-def plot_tnp_efficiency(job, tag, per_era_points, out_png, mc_points=None, plot_lumi_text="Run 3 (13.6 TeV)"):
-    fig, ax = plt.subplots(figsize=(8.5, 5.2))
+def build_central_eff_hist(num_hist, den_hist, name):
+    ratio = num_hist.Clone(name)
+    ratio.SetDirectory(0)
+    ratio.Divide(den_hist)
+    return ratio
 
-    for label, pts in per_era_points.items():
-        ax.errorbar(
-            pts["x"],
-            pts["y"],
-            xerr=pts["xerr"],
-            yerr=np.vstack([pts["yerr_low"], pts["yerr_up"]]),
-            fmt="o",
-            markersize=4,
-            linestyle="none",
-            capsize=2,
-            label=label,
-        )
 
-    if mc_points is not None:
-        ax.errorbar(
-            mc_points["x"],
-            mc_points["y"],
-            xerr=mc_points["xerr"],
-            yerr=np.vstack([mc_points["yerr_low"], mc_points["yerr_up"]]),
-            fmt="s",
-            markersize=4,
-            linestyle="none",
-            capsize=2,
-            color="black",
-            label="MC",
-        )
+def plot_tnp_efficiency(cfg, job, tag, per_era_data, era_sources, out_base, mc_data=None):
+    plotting = cfg.get("plotting", {})
+    energy = str(plotting.get("energy_tev", cfg.get("energy_tev", 13.6)))
+    CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
+    CMS.SetEnergy(energy)
+    CMS.SetLumi(str(plotting.get("lumi_text", global_plot_lumi_text(cfg))))
 
     axis = job.get("axis", "pt").lower()
     pt_order = job.get("pt_order", "leading")
-    x_label = job.get("x_label", f"{pt_order} pT [GeV]" if axis == "pt" else "eta")
+    x_label = job.get("x_label", f"{pt_order} p_{{T}} [GeV]" if axis == "pt" else "#eta")
+    ratio_label = str(job.get("ratio_label", "w. ref"))
+    eff_ymin = float(job.get("ymin", 0.0))
+    eff_ymax = float(job.get("ymax", 1.08))
+    ratio_ymin = float(job.get("ratio_ymin", 0.9))
+    ratio_ymax = float(job.get("ratio_ymax", 1.1))
 
-    ax.set_xlabel(x_label)
-    ax.set_ylabel("Efficiency")
-    ax.set_ylim(job.get("ymin", 0.0), job.get("ymax", 1.05))
-    ax.grid(True, alpha=0.3)
+    ordered_eras = [era for era in era_sources if era in per_era_data]
+    if not ordered_eras:
+        raise RuntimeError("No era data to plot.")
 
-    title = job.get("title", job.get("name", "tnp"))
-    ax.set_title(f"{title} | pass{tag}")
-    ax.legend(fontsize=9)
+    sample_eff = per_era_data[ordered_eras[0]]["eff"]
+    x_axis = sample_eff.GetPassedHistogram().GetXaxis()
+    x_min = x_axis.GetXmin()
+    x_max = x_axis.GetXmax()
 
-    hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
-    hep.cms.lumitext(plot_lumi_text, ax=ax)
+    canvas = CMS.cmsDiCanvas(
+        "",
+        x_min,
+        x_max,
+        eff_ymin,
+        eff_ymax,
+        ratio_ymin,
+        ratio_ymax,
+        x_label,
+        "efficiency",
+        ratio_label,
+        square=CMS.kSquare,
+        extraSpace=0.0,
+        iPos=0,
+    )
+    register_canvas_input(canvas, "canvas", canvas)
 
-    fig.tight_layout()
-    fig.savefig(out_png, dpi=140)
-    plt.close(fig)
+    canvas.cd(1)
+    legend = make_legend(0.40, 0.20, 0.80, 0.40, text_size=float(job.get("legend_text_size", 0.02)), ncols=1)
+    register_canvas_input(canvas, "legend", legend)
+
+    reference_era = ordered_eras[0]
+    reference_ratio = per_era_data[reference_era]["ratio_hist"]
+
+    for idx, era in enumerate(ordered_eras):
+        entry = per_era_data[era]
+        color = COLOR_TEMPLATE[idx % len(COLOR_TEMPLATE)]
+        marker = MARKER_STYLES[idx % len(MARKER_STYLES)]
+        eff = entry["eff"]
+        set_eff_style(eff, color, marker, marker_size=1.0, line_style=1)
+        register_canvas_input(canvas, f"eff::{era}", eff)
+        CMS.cmsDraw(eff, "P E", lcolor=color, mcolor=color, msize=1.0, lwidth=2, fstyle=0)
+        legend.AddEntry(eff, source_display_label(era_sources[era]), "PL")
+
+    if mc_data is not None:
+        mc_eff = mc_data["eff"]
+        set_eff_style(mc_eff, ROOT.kBlack, 34, marker_size=1.0, line_style=1)
+        register_canvas_input(canvas, "eff::MC", mc_eff)
+        CMS.cmsDraw(mc_eff, "P E", lcolor=ROOT.kBlack, mcolor=ROOT.kBlack, msize=1.0, lwidth=2, fstyle=0)
+        legend.AddEntry(mc_eff, "MC", "PL")
+
+    canvas.cd(2)
+    unity = reference_ratio.Clone(f"{reference_ratio.GetName()}_unity")
+    unity.SetDirectory(0)
+    for i_bin in range(1, unity.GetNbinsX() + 1):
+        unity.SetBinContent(i_bin, 1.0)
+        unity.SetBinError(i_bin, 0.0)
+    register_canvas_input(canvas, "unity", unity)
+    CMS.cmsDraw(unity, "HIST", lcolor=ROOT.kBlack, lwidth=2, lstyle=2, fstyle=0)
+
+    first_ratio = True
+    for idx, era in enumerate(ordered_eras):
+        if era == reference_era:
+            continue
+        entry = per_era_data[era]
+        color = COLOR_TEMPLATE[idx % len(COLOR_TEMPLATE)]
+        ratio_hist = entry["ratio_hist"].Clone(f"{entry['ratio_hist'].GetName()}_vs_ref")
+        ratio_hist.SetDirectory(0)
+        ratio_hist.Divide(reference_ratio)
+        register_canvas_input(canvas, f"ratio::{era}", ratio_hist)
+        CMS.cmsDraw(
+            ratio_hist,
+            "HIST SAME" if not first_ratio else "HIST SAME",
+            lcolor=color,
+            lwidth=3,
+            fstyle=0,
+        )
+        first_ratio = False
+
+    if mc_data is not None:
+        mc_ratio = mc_data["ratio_hist"].Clone(f"{mc_data['ratio_hist'].GetName()}_vs_ref")
+        mc_ratio.SetDirectory(0)
+        mc_ratio.Divide(reference_ratio)
+        register_canvas_input(canvas, "ratio::MC", mc_ratio)
+        CMS.cmsDraw(mc_ratio, "HIST SAME", lcolor=ROOT.kBlack, lwidth=3, lstyle=1, fstyle=0)
+
+    CMS.SaveCanvas(canvas, str(out_base.with_suffix(".png")), close=False)
+    CMS.SaveCanvas(canvas, str(out_base.with_suffix(".pdf")))
 
 
 def run_module(cfg, era_sources, out_root, strict=False, progress=None):
@@ -205,7 +304,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
             all_results[job_name][tag] = {}
             tag_successful_eras = 0
             tag_failed_eras = 0
-            per_era_points = {}
+            per_era_data = {}
             era_task = None
             era_items = list(era_sources.items())
             if progress is not None:
@@ -247,8 +346,20 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         name_hint=f"den_{sanitize(job_name)}_{sanitize(tag)}_{sanitize(era)}",
                     )
 
+                    eff = ROOT.TEfficiency(num_hist, den_hist)
+                    ratio_hist = build_central_eff_hist(
+                        num_hist,
+                        den_hist,
+                        f"ratio_{sanitize(job_name)}_{sanitize(tag)}_{sanitize(era)}",
+                    )
                     points = compute_efficiency_points(num_hist, den_hist)
-                    per_era_points[source_display_label(source)] = points
+                    per_era_data[era] = {
+                        "eff": eff,
+                        "num_hist": num_hist,
+                        "den_hist": den_hist,
+                        "ratio_hist": ratio_hist,
+                        "points": points,
+                    }
 
                     all_results[job_name][tag][era] = {
                         "numerator": num_name,
@@ -268,6 +379,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         progress.update(era_task, advance=1)
 
             mc_points = None
+            mc_data = None
             include_mc_for_this_tag = bool(job.get("include_mc", False)) and (
                 len(tags) == 1 or bool(job.get("include_mc_when_multiple_tags", False))
             )
@@ -300,7 +412,20 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         name_hint=f"den_mc_{sanitize(job_name)}_{sanitize(tag)}",
                     )
 
+                    mc_eff = ROOT.TEfficiency(num_hist_mc, den_hist_mc)
+                    mc_ratio_hist = build_central_eff_hist(
+                        num_hist_mc,
+                        den_hist_mc,
+                        f"ratio_mc_{sanitize(job_name)}_{sanitize(tag)}",
+                    )
                     mc_points = compute_efficiency_points(num_hist_mc, den_hist_mc)
+                    mc_data = {
+                        "eff": mc_eff,
+                        "num_hist": num_hist_mc,
+                        "den_hist": den_hist_mc,
+                        "ratio_hist": mc_ratio_hist,
+                        "points": mc_points,
+                    }
                     all_results[job_name][tag]["MC"] = {
                         "numerator": num_name,
                         "denominator": den_name,
@@ -311,15 +436,16 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     if strict:
                         raise
 
-            if per_era_points or mc_points is not None:
-                out_png = out_dir / f"{sanitize(job_name)}_{sanitize(tag)}.png"
+            if per_era_data or mc_data is not None:
+                out_base = out_dir / f"{sanitize(job_name)}_{sanitize(tag)}"
                 plot_tnp_efficiency(
+                    cfg=cfg,
                     job=job,
                     tag=tag,
-                    per_era_points=per_era_points,
-                    out_png=str(out_png),
-                    mc_points=mc_points,
-                    plot_lumi_text=plot_lumi_text,
+                    per_era_data=per_era_data,
+                    era_sources=era_sources,
+                    out_base=out_base,
+                    mc_data=mc_data,
                 )
             all_results[job_name][tag]["_status"] = {
                 "status": "ok" if tag_successful_eras > 0 else "empty",

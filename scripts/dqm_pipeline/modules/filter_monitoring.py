@@ -278,7 +278,7 @@ def draw_filter_canvas(
     marker_styles = [20, 21, 22, 23, 33, 34, 29, 30]
 
     canvas.cd(1)
-    legend = make_compact_legend(0.40, 0.20, 0.80, 0.40, text_size=0.02, ncols=legend_cols)
+    legend = make_compact_legend(0.56, 0.18, 0.90, 0.40, text_size=0.02, ncols=legend_cols)
     register_canvas_input(canvas, "legend", legend)
 
     set_eff_style(base_eff, ROOT.kBlack, 20, marker_size=1.05, line_style=1)
@@ -351,7 +351,7 @@ def draw_filter_era_comparison_canvas(
     marker_styles = [20, 24, 25, 26, 27, 28]
 
     canvas.cd(1)
-    legend = make_compact_legend(0.15, 0.70, 0.90, 0.90, text_size=0.02, ncols=3)
+    legend = make_compact_legend(0.42, 0.18, 0.90, 0.38, text_size=0.02, ncols=3)
     register_canvas_input(canvas, "legend", legend)
     for idx, (era_label, eff) in enumerate(abs_by_era.items()):
         color = palette[idx % len(palette)]
@@ -433,7 +433,7 @@ def draw_run_trend_canvas(
     frame.GetXaxis().SetNoExponent(True)
     frame.GetXaxis().SetMaxDigits(10)
 
-    legend = make_compact_legend(0.60, 0.60, 0.90, 0.88, text_size=0.03, ncols=1)
+    legend = make_compact_legend(0.60, 0.16, 0.90, 0.40, text_size=0.03, ncols=1)
     register_canvas_input(canvas, "legend", legend)
 
     palette_hex = [

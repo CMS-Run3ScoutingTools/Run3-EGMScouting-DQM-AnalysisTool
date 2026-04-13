@@ -172,7 +172,7 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     ax.set_xlabel("Dielectron mass [GeV]")
     ax.set_ylabel("Events / 1 GeV")
     ax.grid()
-    ax.legend()
+    ax.legend(loc="upper right", frameon=False)
 
     hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
     hep.cms.lumitext(plot_lumi_text or f"{era_label}", ax=ax)
@@ -327,8 +327,7 @@ def plot_mass_overlay(variable, era_hists, era_sources, out_png, scale_mode="non
     )
 
     ax.legend(
-        loc="upper left",
-        bbox_to_anchor=(0.00, 0.97),
+        loc="upper right",
         frameon=False,
         fontsize=11,
         handlelength=2.2,
@@ -352,9 +351,9 @@ def plot_mass_by_era(results_by_era, out_png, ymin, ymax, title, plot_lumi_text=
     ax.errorbar(labels, masses, yerr=mass_errs, color="tab:red", fmt="s", capsize=4, label="Fitted mass (w fitted error)")
     ax.set_ylabel("Mass [GeV]")
     ax.set_ylim(ymin, ymax)
-    ax.set_title(title)
+    # ax.set_title(title)
     ax.grid(True, which="both", axis="x", linestyle="--", alpha=0.5)
-    ax.legend()
+    ax.legend(loc="upper right", frameon=False)
     hep.cms.text("Preliminary", loc=2, ax=ax, fontsize=12)
     hep.cms.lumitext(plot_lumi_text, ax=ax)
     fig.tight_layout()

@@ -125,7 +125,7 @@ filter_monitoring:
   rebin: 1
   ratio_ymin: 0.9
   ratio_ymax: 1.1
-  legend_cols: 2
+  legend_cols: 1
   save_era_comparison: true
   save_run_trends: true
   hist_path_template: DQMData/Run {run}/HLT/Run summary/ScoutingOffline/EGamma/TnP/{target_dir}/{hist}
