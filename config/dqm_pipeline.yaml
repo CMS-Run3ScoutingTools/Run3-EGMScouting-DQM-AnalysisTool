@@ -14,11 +14,11 @@ lumi:
 
 # Era inputs now come from DAS datasets + run filters.
 eras:
-  2025_eraG:
-    label: Run2025G
-    year: 2025
-    golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions25/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions25_13p6TeV_Latest.json
-    file_glob: /eos/cms/store/group/comm_dqm/DQMGUI_data/Run2025/ScoutingPFMonitor/*/DQM_*__ScoutingPFMonitor__Run2025G-PromptReco-v1__DQMIO.root
+#  2025_eraG:
+#    label: Run2025G
+#    year: 2025
+#    golden_json: https://cms-service-dqmdc.web.cern.ch/CAF/certification/Collisions25/DCSOnly_JSONS/dailyDCSOnlyJSON/Collisions25_13p6TeV_Latest.json
+#    file_glob: /eos/cms/store/group/comm_dqm/DQMGUI_data/Run2025/ScoutingPFMonitor/*/DQM_*__ScoutingPFMonitor__Run2025G-PromptReco-v1__DQMIO.root
   2026_eraA:
     label: Run2026A
     year: 2026
