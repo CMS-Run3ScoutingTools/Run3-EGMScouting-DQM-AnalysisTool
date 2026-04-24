@@ -314,7 +314,6 @@ def draw_filter_canvas(
 
     set_eff_style(base_eff, ROOT.kBlack, 20, marker_size=1.05, line_style=1)
     register_canvas_input(canvas, f"base_eff::{base_tag}", base_eff)
-    CMS.cmsDraw(base_eff, "P E", lcolor=ROOT.kBlack, mcolor=ROOT.kBlack, msize=1.0, lwidth=2, fstyle=0)
 
     for idx, (label, eff_abs) in enumerate(abs_effs.items()):
         color = palette[idx % len(palette)]
