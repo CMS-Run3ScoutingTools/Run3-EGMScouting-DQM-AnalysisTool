@@ -37,7 +37,38 @@ def safe_tag(value):
 
 
 def compact_label(value):
-    return str(value)
+    text = str(value)
+    exact = {
+        "DST_PFScouting_DoubleEG_v": "DoubleEG",
+        "DST_PFScouting_SinglePhotonEB_v": "SinglePhoEB",
+        "DST_PFScouting_DoubleEG_v_fireTrigObj": "DoubleEG fireObj",
+        "DST_PFScouting_SinglePhotonEB_v_fireTrigObj": "SinglePhoEB fireObj",
+        "hltEGL1DoubleIsoEG11Filter": "L1 DoubleIsoEG11",
+        "hltDoubleEG11CaloIdLEt11Filter": "Et11",
+        "hltDoubleEG11CaloIdLClusterShapeFilter": "ClusterShape",
+        "hltDoubleEG11CaloIdLHEFilter": "H/E",
+        "hltEGL1SingleEGOrFilter": "L1 SingleEG OR",
+        "hltEG30EBTightIDTightIsoEtFilter": "Et",
+        "hltEG30EBTightIDTightIsoClusterShapeFilter": "ClusterShape",
+        "hltEG30EBTightIDTightIsoHEFilter": "H/E",
+        "hltEG30EBTightIDTightIsoR9Filter": "R9",
+        "hltEG30EBTightIDTightIsotEcalIsoFilter": "EcalIso",
+        "hltEG30EBTightIDTightIsoHcalIsoFilter": "HcalIso",
+        "hltEG30EBTightIDTightIsoTrackIsoFilter": "TrackIso",
+    }
+    if text in exact:
+        return exact[text]
+
+    text = text.replace("DST_PFScouting_", "").replace("_v", "")
+    text = text.replace("_fireTrigObj", " fireObj")
+    text = text.replace("hlt", "")
+    text = text.replace("Filter", "")
+    text = text.replace("TightIDTightIso", "")
+    text = text.replace("CaloIdL", "")
+
+    if len(text) > 22:
+        return text[:19] + "..."
+    return text
 
 
 def normalize_base_tag(tag):
