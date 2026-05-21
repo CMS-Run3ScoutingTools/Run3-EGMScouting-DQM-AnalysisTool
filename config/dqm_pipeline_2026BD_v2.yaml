@@ -3,6 +3,7 @@ resonance: resonanceZ
 output_dir: plot_DQM2026BD_v2
 
 plotting:
+  run: Run 3
   campaign_label: Run 2026
   lumi_text: Run 2026 (13.6 TeV)
   energy_tev: 13.6

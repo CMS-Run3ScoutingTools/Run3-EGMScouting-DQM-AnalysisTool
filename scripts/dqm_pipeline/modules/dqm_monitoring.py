@@ -69,6 +69,20 @@ def cms_lumi_value(cfg, source=None):
     return total if total > 0.0 else None
 
 
+def cms_run_label(cfg):
+    plotting = cfg.get("plotting", {})
+    return str(plotting.get("run", plotting.get("run_label", "Run 3")))
+
+
+def cms_set_lumi(cfg, source=None):
+    lumi = cms_lumi_value(cfg, source=source)
+    run = cms_run_label(cfg)
+    try:
+        CMS.SetLumi(lumi, unit="fb", run=run, round_lumi=2)
+    except TypeError:
+        CMS.SetLumi(lumi if lumi is not None else "")
+
+
 def cms_square():
     return getattr(CMS, "kSquare", True)
 
@@ -97,7 +111,7 @@ def draw_hist_overlay(cfg, hist_name, era_hists, era_sources, out_base, job):
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(cms_lumi_value(cfg))
+    cms_set_lumi(cfg)
 
     x_low = job.get("x_min")
     x_high = job.get("x_max")
@@ -163,7 +177,7 @@ def draw_pat_sct_comparison(cfg, era_key, source, quantity, region, pat_hist, sc
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(cms_lumi_value(cfg, source=source))
+    cms_set_lumi(cfg, source=source)
 
     pat = pat_hist.Clone(f"{pat_hist.GetName()}_{sanitize(era_key)}_pat_norm")
     sct = sct_hist.Clone(f"{sct_hist.GetName()}_{sanitize(era_key)}_sct_norm")

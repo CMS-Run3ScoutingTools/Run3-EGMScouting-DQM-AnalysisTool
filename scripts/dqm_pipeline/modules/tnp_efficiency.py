@@ -64,6 +64,20 @@ def cms_lumi_value(cfg):
     return total if total > 0.0 else None
 
 
+def cms_run_label(cfg):
+    plotting = cfg.get("plotting", {})
+    return str(plotting.get("run", plotting.get("run_label", "Run 3")))
+
+
+def cms_set_lumi(cfg):
+    lumi = cms_lumi_value(cfg)
+    run = cms_run_label(cfg)
+    try:
+        CMS.SetLumi(lumi, unit="fb", run=run, round_lumi=2)
+    except TypeError:
+        CMS.SetLumi(lumi if lumi is not None else "")
+
+
 def cms_square():
     return getattr(CMS, "kSquare", True)
 
@@ -171,7 +185,7 @@ def plot_tnp_efficiency(cfg, job, tag, per_era_data, era_sources, out_base, mc_d
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(cms_lumi_value(cfg))
+    cms_set_lumi(cfg)
 
     axis = job.get("axis", "pt").lower()
     pt_order = job.get("pt_order", "leading")

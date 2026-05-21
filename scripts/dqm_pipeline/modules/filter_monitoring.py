@@ -117,6 +117,20 @@ def cms_lumi_value(cfg, source=None):
     return total if total > 0.0 else None
 
 
+def cms_run_label(cfg):
+    plotting = cfg.get("plotting", {})
+    return str(plotting.get("run", plotting.get("run_label", "Run 3")))
+
+
+def cms_set_lumi(cfg, source=None):
+    lumi = cms_lumi_value(cfg, source=source)
+    run = cms_run_label(cfg)
+    try:
+        CMS.SetLumi(lumi, unit="fb", run=run, round_lumi=2)
+    except TypeError:
+        CMS.SetLumi(lumi if lumi is not None else "")
+
+
 def cms_square():
     return getattr(CMS, "kSquare", True)
 
@@ -305,7 +319,7 @@ def draw_filter_canvas(
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(cms_lumi_value(cfg, source=source))
+    cms_set_lumi(cfg, source=source)
 
     axis = str(job.get("axis", "pt")).lower()
     pt_order = job.get("pt_order", "leading")
@@ -376,7 +390,7 @@ def draw_filter_era_comparison_canvas(
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(cms_lumi_value(cfg))
+    cms_set_lumi(cfg)
 
     sample_eff = next(iter(abs_by_era.values()))
     axis = str(job.get("axis", "pt")).lower()
@@ -441,7 +455,7 @@ def draw_run_trend_canvas(
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(cms_lumi_value(cfg))
+    cms_set_lumi(cfg)
 
     runs = sorted(
         {
