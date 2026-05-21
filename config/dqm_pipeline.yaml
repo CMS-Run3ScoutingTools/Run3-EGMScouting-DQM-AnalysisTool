@@ -87,6 +87,17 @@ tnp_efficiency:
         - DST_PFScouting_DoubleEG_v
         - DST_PFScouting_DoubleEG_v_fireTrigObj
       include_mc: false
+    - name: dst_doubleEG_pat_leading_barrel
+      tagging_type: pat
+      probe_type: pat
+      target_dir: Tag_PatElectron
+      pt_order: leading
+      axis: pt
+      region: Barrel
+      tags:
+        - DST_PFScouting_DoubleEG_v
+        - DST_PFScouting_DoubleEG_v_fireTrigObj
+      include_mc: false
 
 quantity_per_era:
   enabled: true

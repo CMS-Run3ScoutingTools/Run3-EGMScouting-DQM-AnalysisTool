@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import mplhep as hep
 from scipy.optimize import curve_fit
-from scipy.special import erf
 
 from dqm_pipeline.core import aggregate_histogram_for_era, sanitize, emit_log
 
@@ -36,27 +35,107 @@ def source_plot_lumi_text(cfg, source):
     return f"{label} ({energy} TeV)"
 
 
-def crystal_ball(x, alpha, n, mean, sigma, amp):
+def double_crystal_ball(x, mean, sigma, alpha_l, n_l, alpha_r, n_r, amp):
     x = np.asarray(x)
     t = (x - mean) / sigma
-    abs_alpha = max(abs(alpha), 1e-3)
-    n = max(n, 1.01)
 
-    a_term = (n / abs_alpha) ** n * np.exp(-0.5 * abs_alpha**2)
-    b_term = n / abs_alpha - abs_alpha
-    c_term = n / abs_alpha / (n - 1.0) * np.exp(-0.5 * abs_alpha**2)
-    d_term = np.sqrt(np.pi / 2.0) * (1.0 + erf(abs_alpha / np.sqrt(2.0)))
-    norm = 1.0 / (sigma * (c_term + d_term))
+    alpha_l = abs(alpha_l) if abs(alpha_l) > 1e-6 else 1e-6
+    alpha_r = abs(alpha_r) if abs(alpha_r) > 1e-6 else 1e-6
+    n_l = max(n_l, 1.01)
+    n_r = max(n_r, 1.01)
 
-    out = np.zeros_like(t)
-    mask = t > -abs_alpha
-    out[mask] = np.exp(-0.5 * t[mask] ** 2)
-    out[~mask] = a_term * np.power(b_term - t[~mask], -n)
-    return amp * norm * out
+    left_a = (n_l / alpha_l) ** n_l * np.exp(-0.5 * alpha_l**2)
+    left_b = n_l / alpha_l - alpha_l
+    right_a = (n_r / alpha_r) ** n_r * np.exp(-0.5 * alpha_r**2)
+    right_b = n_r / alpha_r - alpha_r
+
+    out = np.exp(-0.5 * t**2)
+    left_mask = t < -alpha_l
+    right_mask = t > alpha_r
+    out[left_mask] = left_a * np.power(left_b - t[left_mask], -n_l)
+    out[right_mask] = right_a * np.power(right_b + t[right_mask], -n_r)
+    return amp * out
 
 
-def model_mass(x, bkg_amp, bkg_slope, cb_amp, cb_alpha, cb_n, cb_mean, cb_sigma):
-    return bkg_amp * np.exp(bkg_slope * x) + crystal_ball(x, cb_alpha, cb_n, cb_mean, cb_sigma, cb_amp)
+def background_curve(x, params, bkg_type):
+    x = np.asarray(x, dtype=float)
+    if bkg_type == "none":
+        return np.zeros_like(x, dtype=float)
+    if bkg_type == "linear":
+        offset, slope = params
+        return np.clip(offset + slope * x, 0.0, None)
+    if bkg_type == "constant":
+        return np.full_like(x, params[0], dtype=float)
+    if bkg_type == "exp":
+        amp, slope = params
+        return amp * np.exp(slope * x)
+    if bkg_type == "quintic":
+        return sum(coeff * np.power(x, order) for order, coeff in enumerate(params))
+    raise RuntimeError(f"Unsupported mass_fit background type '{bkg_type}'.")
+
+
+def n_background_params(bkg_type):
+    return {"none": 0, "constant": 1, "linear": 2, "exp": 2, "quintic": 6}[bkg_type]
+
+
+def model_mass_dcb(x, *params, bkg_type="exp"):
+    n_bkg = n_background_params(bkg_type)
+    bkg_params = params[:n_bkg]
+    mean, sigma, alpha_l, n_l, alpha_r, n_r, amp = params[n_bkg:]
+    return background_curve(x, bkg_params, bkg_type) + double_crystal_ball(
+        x,
+        mean=mean,
+        sigma=sigma,
+        alpha_l=alpha_l,
+        n_l=n_l,
+        alpha_r=alpha_r,
+        n_r=n_r,
+        amp=amp,
+    )
+
+
+def initial_dcb_parameters(x_vals, y_vals, xmin, xmax, bkg_type):
+    peak_idx = int(np.argmax(y_vals))
+    peak_x = float(x_vals[peak_idx])
+    peak_y = float(y_vals[peak_idx])
+    bkg_guess = max(float(np.percentile(y_vals, 10)), 1.0)
+    sigma_guess = max(0.03 * (xmax - xmin), 0.05)
+
+    if bkg_type == "none":
+        bkg_p0 = []
+        bkg_lo = []
+        bkg_hi = []
+    elif bkg_type == "constant":
+        bkg_p0 = [bkg_guess]
+        bkg_lo = [0.0]
+        bkg_hi = [np.inf]
+    elif bkg_type == "linear":
+        bkg_p0 = [bkg_guess, 0.0]
+        bkg_lo = [0.0, -np.inf]
+        bkg_hi = [np.inf, np.inf]
+    elif bkg_type == "exp":
+        bkg_p0 = [bkg_guess, 0.0]
+        bkg_lo = [0.0, -1.0]
+        bkg_hi = [np.inf, 1.0]
+    elif bkg_type == "quintic":
+        bkg_p0 = [bkg_guess, 0.0, 0.0, 0.0, 0.0, 0.0]
+        bkg_lo = [-np.inf] * 6
+        bkg_hi = [np.inf] * 6
+    else:
+        raise RuntimeError(f"Unsupported mass_fit background type '{bkg_type}'.")
+
+    signal_p0 = [
+        min(max(peak_x, xmin), xmax),
+        sigma_guess,
+        1.5,
+        3.0,
+        1.5,
+        3.0,
+        max(peak_y - bkg_guess, peak_y, 1.0),
+    ]
+    signal_lo = [xmin, 0.01, 0.05, 1.01, 0.05, 1.01, 0.0]
+    signal_hi = [xmax, max(xmax - xmin, 0.1), 10.0, 200.0, 10.0, 200.0, np.inf]
+    return bkg_p0 + signal_p0, bkg_lo + signal_lo, bkg_hi + signal_hi
 
 
 def extract_points_from_hist(hist, xmin, xmax, error_model="sqrt_y"):
@@ -111,7 +190,19 @@ def extract_points_with_target_nbins(hist, xmin, xmax, target_nbins, error_model
     return centers[mask], sums[mask], errs[mask]
 
 
-def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, target_nbins=None, error_model="sqrt_y", plot_lumi_text=None):
+def fit_histogram(
+    hist,
+    xmin,
+    xmax,
+    era,
+    era_label,
+    out_png,
+    rebin_factor=1,
+    target_nbins=None,
+    error_model="sqrt_y",
+    plot_lumi_text=None,
+    bkg_type="exp",
+):
     if target_nbins is not None:
         x_vals, y_vals, y_errs = extract_points_with_target_nbins(
             hist=hist,
@@ -138,27 +229,26 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     if len(x_vals) < 7:
         raise RuntimeError(f"Not enough points to fit in [{xmin}, {xmax}] for era {era}.")
 
-    p0 = [1e6, 0.0, 2e5, 1.5, 3.0, 0.5 * (xmin + xmax), 1.0]
-    bounds = (
-        [0.0, -1.0, 0.0, 0.5, 1.0, xmin, 0.01],
-        [np.inf, 1.0, np.inf, 5.0, 20.0, xmax, 10.0],
-    )
+    bkg_type = str(bkg_type).lower()
+    p0, lower_bounds, upper_bounds = initial_dcb_parameters(x_vals, y_vals, xmin, xmax, bkg_type)
 
     popt, pcov = curve_fit(
-        model_mass,
+        lambda x, *params: model_mass_dcb(x, *params, bkg_type=bkg_type),
         x_vals,
         y_vals,
         p0=p0,
         sigma=y_errs,
         absolute_sigma=True,
         maxfev=10000,
-        bounds=bounds,
+        bounds=(lower_bounds, upper_bounds),
     )
     perr = np.sqrt(np.diag(pcov))
 
     x_fit = np.linspace(x_vals.min(), x_vals.max(), 1000)
-    bkg_curve = popt[0] * np.exp(popt[1] * x_fit)
-    sig_curve = crystal_ball(x_fit, *popt[3:7], popt[2])
+    n_bkg = n_background_params(bkg_type)
+    bkg_curve = background_curve(x_fit, popt[:n_bkg], bkg_type)
+    mean, sigma, alpha_l, n_l, alpha_r, n_r, amp = popt[n_bkg:]
+    sig_curve = double_crystal_ball(x_fit, mean, sigma, alpha_l, n_l, alpha_r, n_r, amp)
     tot_curve = bkg_curve + sig_curve
 
     bkg_integral = float(np.trapz(bkg_curve, x_fit))
@@ -168,7 +258,7 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     ax.errorbar(x_vals, y_vals, yerr=y_errs, fmt="ko", label="Data", markersize=3)
     ax.plot(x_fit, tot_curve, "m-", label="Signal + Background")
     ax.plot(x_fit, bkg_curve, color="brown", label="Background")
-    ax.plot(x_fit, sig_curve, color="cyan", label="Signal(Crystal Ball)")
+    ax.plot(x_fit, sig_curve, color="cyan", label="Signal(Double Crystal Ball)")
     ax.set_xlabel("Dielectron mass [GeV]")
     ax.set_ylabel("Events / 1 GeV")
     ax.set_xlim(float(xmin), float(xmax))
@@ -201,7 +291,7 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     plt.text(
         0.05,
         0.70,
-        f"mean: {popt[5]:.1f} GeV",
+        f"mean: {mean:.1f} GeV",
         transform=plt.gca().transAxes,
         fontsize=10,
         verticalalignment="top",
@@ -211,7 +301,7 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     plt.text(
         0.05,
         0.65,
-        f"$\\sigma_{{cb}}$: {popt[6]:.1f} GeV",
+        f"$\\sigma_{{dcb}}$: {sigma:.1f} GeV",
         transform=plt.gca().transAxes,
         fontsize=10,
         verticalalignment="top",
@@ -221,7 +311,7 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     plt.text(
         0.05,
         0.60,
-        f"relative width: {100.0 * popt[6] / popt[5]:.1f} %",
+        f"relative width: {100.0 * sigma / mean:.1f} %",
         transform=plt.gca().transAxes,
         fontsize=10,
         verticalalignment="top",
@@ -233,10 +323,21 @@ def fit_histogram(hist, xmin, xmax, era, era_label, out_png, rebin_factor=1, tar
     fig.savefig(out_png)
     plt.close(fig)
 
-    names = ["bkg_amp", "bkg_slope", "cb_amp", "cb_alpha", "cb_n", "cb_mean", "cb_sigma"]
+    bkg_names = {
+        "none": [],
+        "constant": ["bkg_amp"],
+        "linear": ["bkg_offset", "bkg_slope"],
+        "exp": ["bkg_amp", "bkg_slope"],
+        "quintic": ["bkg_c0", "bkg_c1", "bkg_c2", "bkg_c3", "bkg_c4", "bkg_c5"],
+    }[bkg_type]
+    names = bkg_names + ["dcb_mean", "dcb_sigma", "dcb_alpha_l", "dcb_n_l", "dcb_alpha_r", "dcb_n_r", "dcb_amp"]
     out = {}
     for name, val, err in zip(names, popt, perr):
         out[name] = {"value": float(val), "err": float(err)}
+    out["cb_mean"] = dict(out["dcb_mean"])
+    out["cb_sigma"] = dict(out["dcb_sigma"])
+    out["fit_model"] = "double_crystal_ball"
+    out["background_type"] = bkg_type
     out["background_integral"] = bkg_integral
     out["signal_integral"] = sig_integral
     return out
@@ -372,6 +473,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     hist_tpl = section["hist_path_template"]
     default_rebin = int(section.get("rebin", 1))
     error_model = section.get("error_model", "sqrt_y")  # sqrt_y | hist
+    default_bkg_type = str(section.get("bkg_type", section.get("background_type", "exp"))).lower()
     overlay_rebin = int(section.get("overlay_rebin", default_rebin))
     overlay_scale_mode = section.get("overlay_scale", "none")
     summary_lumi_text = global_plot_lumi_text(cfg)
@@ -431,6 +533,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     win_nbins = win.get("nbins")
                     if win_nbins is not None:
                         win_nbins = int(win_nbins)
+                    win_bkg_type = str(win.get("bkg_type", win.get("background_type", default_bkg_type))).lower()
 
                     fit_png = out_dir / f"{era}_{sanitize(variable)}_{fit_name}.png"
                     fit_out = fit_histogram(
@@ -444,6 +547,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         target_nbins=win_nbins,
                         error_model=error_model,
                         plot_lumi_text=individual_lumi_text,
+                        bkg_type=win_bkg_type,
                     )
                     fit_binning = (
                         {"mode": "nbins", "value": win_nbins}
