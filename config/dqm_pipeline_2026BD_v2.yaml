@@ -13,14 +13,14 @@ lumi:
 
 eras:
   2026B_v2:
-    label: Run2026B v2
+    label: 2026B
     year: 2026
     golden_json: null
     lumi_fb: 15.860
     run_number: 333334
     file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026B_v2/data.root
   2026D_v2:
-    label: Run2026D v2
+    label: 2026D
     year: 2026
     golden_json: null
     lumi_fb: 10.774
@@ -34,6 +34,7 @@ mass_fit:
   bkg_type: exp
   overlay_rebin: 2
   overlay_scale: lumi_fb
+  overlay_x_min: 1.0
   hist_path_template: DQMData/Run {run}/HLT/Run summary/ScoutingOffline/EGamma/Collection/{var}
   variables:
     - sctElectron_EBEB_appliedID_invMass

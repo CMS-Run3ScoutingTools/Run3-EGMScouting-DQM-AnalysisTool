@@ -361,7 +361,16 @@ def overlay_scale_value(source, mode):
     return None
 
 
-def plot_mass_overlay(variable, era_hists, era_sources, out_png, scale_mode="none", plot_lumi_text="Run 3 (13.6 TeV)"):
+def plot_mass_overlay(
+    variable,
+    era_hists,
+    era_sources,
+    out_png,
+    scale_mode="none",
+    plot_lumi_text="Run 3 (13.6 TeV)",
+    x_min=None,
+    x_max=None,
+):
     fig, ax = plt.subplots(figsize=(9.2, 6.0))
 
     for era, hist in era_hists.items():
@@ -386,6 +395,9 @@ def plot_mass_overlay(variable, era_hists, era_sources, out_png, scale_mode="non
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlabel("M$_{ee}$ [GeV]", fontsize=22)
+    if x_min is not None or x_max is not None:
+        current_xmin, current_xmax = ax.get_xlim()
+        ax.set_xlim(float(x_min) if x_min is not None else current_xmin, float(x_max) if x_max is not None else current_xmax)
 
     if scale_mode == "lumi_fb":
         ax.set_ylabel("Events / fb", fontsize=22)
@@ -476,6 +488,9 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     default_bkg_type = str(section.get("bkg_type", section.get("background_type", "exp"))).lower()
     overlay_rebin = int(section.get("overlay_rebin", default_rebin))
     overlay_scale_mode = section.get("overlay_scale", "none")
+    overlay_x_min = section.get("overlay_x_min")
+    overlay_x_max = section.get("overlay_x_max")
+    overlay_x_ranges = section.get("overlay_x_ranges", {})
     summary_lumi_text = global_plot_lumi_text(cfg)
 
     out_dir = Path(out_root) / section.get("output_subdir", MODULE_NAME)
@@ -581,6 +596,8 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                 out_png=str(overlay_png),
                 scale_mode=overlay_scale_mode,
                 plot_lumi_text=summary_lumi_text,
+                x_min=overlay_x_ranges.get(variable, {}).get("xmin", overlay_x_min),
+                x_max=overlay_x_ranges.get(variable, {}).get("xmax", overlay_x_max),
             )
         else:
             emit_log(
