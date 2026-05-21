@@ -44,6 +44,15 @@ def global_lumi_label(cfg):
     return f"{campaign} ({energy} TeV)"
 
 
+def cms_energy_value(cfg):
+    plotting = cfg.get("plotting", {})
+    raw_energy = plotting.get("energy_tev", cfg.get("energy_tev", 13.6))
+    try:
+        return float(raw_energy)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Invalid CMS energy value '{raw_energy}'. Use a numeric TeV value, e.g. 13.6.") from exc
+
+
 def register_canvas_input(canvas, key, obj):
     if not hasattr(canvas, "_input_cache"):
         canvas._input_cache = {}
@@ -67,7 +76,7 @@ def normalize_hist(hist, mode):
 def draw_hist_overlay(cfg, hist_name, era_hists, era_sources, out_base, job):
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
-    CMS.SetEnergy(str(plotting.get("energy_tev", cfg.get("energy_tev", 13.6))))
+    CMS.SetEnergy(cms_energy_value(cfg))
     CMS.SetLumi(global_lumi_label(cfg))
 
     x_low = job.get("x_min")
@@ -133,7 +142,7 @@ def build_comparison_hist_name(resonance, probe_type, quantity, region):
 def draw_pat_sct_comparison(cfg, era_key, source, quantity, region, pat_hist, sct_hist, out_base, job):
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
-    CMS.SetEnergy(str(plotting.get("energy_tev", cfg.get("energy_tev", 13.6))))
+    CMS.SetEnergy(cms_energy_value(cfg))
     CMS.SetLumi(str(job.get("lumi_text", source_lumi_label(cfg, source))))
 
     pat = pat_hist.Clone(f"{pat_hist.GetName()}_{sanitize(era_key)}_pat_norm")

@@ -42,6 +42,15 @@ def global_plot_lumi_text(cfg):
     return "Run3"
 
 
+def cms_energy_value(cfg):
+    plotting = cfg.get("plotting", {})
+    raw_energy = plotting.get("energy_tev", cfg.get("energy_tev", 13.6))
+    try:
+        return float(raw_energy)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Invalid CMS energy value '{raw_energy}'. Use a numeric TeV value, e.g. 13.6.") from exc
+
+
 def register_canvas_input(canvas, key, obj):
     if not hasattr(canvas, "_input_cache"):
         canvas._input_cache = {}
@@ -143,9 +152,8 @@ def build_central_eff_hist(num_hist, den_hist, name):
 
 def plot_tnp_efficiency(cfg, job, tag, per_era_data, era_sources, out_base, mc_data=None):
     plotting = cfg.get("plotting", {})
-    energy = str(plotting.get("energy_tev", cfg.get("energy_tev", 13.6)))
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
-    CMS.SetEnergy(energy)
+    CMS.SetEnergy(cms_energy_value(cfg))
     CMS.SetLumi(str(plotting.get("lumi_text", global_plot_lumi_text(cfg))))
 
     axis = job.get("axis", "pt").lower()

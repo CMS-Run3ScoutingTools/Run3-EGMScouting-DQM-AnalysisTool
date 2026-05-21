@@ -100,6 +100,15 @@ def source_display_label(source):
     return str(source.get("display_label", source.get("era", "era")))
 
 
+def cms_energy_value(cfg):
+    plotting = cfg.get("plotting", {})
+    raw_energy = plotting.get("energy_tev", cfg.get("energy_tev", 13.6))
+    try:
+        return float(raw_energy)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Invalid CMS energy value '{raw_energy}'. Use a numeric TeV value, e.g. 13.6.") from exc
+
+
 def register_canvas_input(canvas, key, obj):
     if not hasattr(canvas, "_input_cache"):
         canvas._input_cache = {}
@@ -142,7 +151,7 @@ def expand_jobs(section):
 def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False):
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
-    CMS.SetEnergy(str(plotting.get("energy_tev", cfg.get("energy_tev", 13.6))))
+    CMS.SetEnergy(cms_energy_value(cfg))
     CMS.SetLumi(str(plotting.get("lumi_text", "Run3 2026")))
 
     quantity = str(job["quantity"])
