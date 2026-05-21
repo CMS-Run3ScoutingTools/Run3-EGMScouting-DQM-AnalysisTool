@@ -101,6 +101,22 @@ def cms_energy_value(cfg):
         raise RuntimeError(f"Invalid CMS energy value '{raw_energy}'. Use a numeric TeV value, e.g. 13.6.") from exc
 
 
+def cms_lumi_value(cfg, source=None):
+    if source is not None and source.get("lumi_fb") is not None:
+        return float(source["lumi_fb"])
+
+    plotting = cfg.get("plotting", {})
+    for key in ("lumi_fb", "lumi"):
+        if plotting.get(key) is not None:
+            return float(plotting[key])
+
+    total = 0.0
+    for era_cfg in cfg.get("eras", {}).values():
+        if isinstance(era_cfg, dict) and era_cfg.get("lumi_fb") is not None:
+            total += float(era_cfg["lumi_fb"])
+    return total if total > 0.0 else None
+
+
 def default_bins(axis):
     if str(axis).lower() == "eta":
         return [-2.5 + i * 0.5 for i in range(11)]
@@ -285,7 +301,7 @@ def draw_filter_canvas(
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(str(plotting.get("lumi_text", source_lumi_label(cfg, source))))
+    CMS.SetLumi(cms_lumi_value(cfg, source=source))
 
     axis = str(job.get("axis", "pt")).lower()
     pt_order = job.get("pt_order", "leading")
@@ -356,7 +372,7 @@ def draw_filter_era_comparison_canvas(
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(str(plotting.get("lumi_text", f"Run 3")))
+    CMS.SetLumi(cms_lumi_value(cfg))
 
     sample_eff = next(iter(abs_by_era.values()))
     axis = str(job.get("axis", "pt")).lower()
@@ -421,7 +437,7 @@ def draw_run_trend_canvas(
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(str(plotting.get("lumi_text", "Run3")))
+    CMS.SetLumi(cms_lumi_value(cfg))
 
     runs = sorted(
         {

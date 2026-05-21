@@ -109,6 +109,19 @@ def cms_energy_value(cfg):
         raise RuntimeError(f"Invalid CMS energy value '{raw_energy}'. Use a numeric TeV value, e.g. 13.6.") from exc
 
 
+def cms_lumi_value(cfg):
+    plotting = cfg.get("plotting", {})
+    for key in ("lumi_fb", "lumi"):
+        if plotting.get(key) is not None:
+            return float(plotting[key])
+
+    total = 0.0
+    for era_cfg in cfg.get("eras", {}).values():
+        if isinstance(era_cfg, dict) and era_cfg.get("lumi_fb") is not None:
+            total += float(era_cfg["lumi_fb"])
+    return total if total > 0.0 else None
+
+
 def register_canvas_input(canvas, key, obj):
     if not hasattr(canvas, "_input_cache"):
         canvas._input_cache = {}
@@ -152,7 +165,7 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(str(plotting.get("lumi_text", "Run3 2026")))
+    CMS.SetLumi(cms_lumi_value(cfg))
 
     quantity = str(job["quantity"])
     x_title = str(job.get("x_title", quantity))

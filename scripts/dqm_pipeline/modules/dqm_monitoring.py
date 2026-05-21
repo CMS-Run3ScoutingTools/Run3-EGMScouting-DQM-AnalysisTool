@@ -53,6 +53,22 @@ def cms_energy_value(cfg):
         raise RuntimeError(f"Invalid CMS energy value '{raw_energy}'. Use a numeric TeV value, e.g. 13.6.") from exc
 
 
+def cms_lumi_value(cfg, source=None):
+    if source is not None and source.get("lumi_fb") is not None:
+        return float(source["lumi_fb"])
+
+    plotting = cfg.get("plotting", {})
+    for key in ("lumi_fb", "lumi"):
+        if plotting.get(key) is not None:
+            return float(plotting[key])
+
+    total = 0.0
+    for era_cfg in cfg.get("eras", {}).values():
+        if isinstance(era_cfg, dict) and era_cfg.get("lumi_fb") is not None:
+            total += float(era_cfg["lumi_fb"])
+    return total if total > 0.0 else None
+
+
 def register_canvas_input(canvas, key, obj):
     if not hasattr(canvas, "_input_cache"):
         canvas._input_cache = {}
@@ -77,7 +93,7 @@ def draw_hist_overlay(cfg, hist_name, era_hists, era_sources, out_base, job):
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(global_lumi_label(cfg))
+    CMS.SetLumi(cms_lumi_value(cfg))
 
     x_low = job.get("x_min")
     x_high = job.get("x_max")
@@ -143,7 +159,7 @@ def draw_pat_sct_comparison(cfg, era_key, source, quantity, region, pat_hist, sc
     plotting = cfg.get("plotting", {})
     CMS.SetExtraText(str(plotting.get("cms_extra_text", "Preliminary")))
     CMS.SetEnergy(cms_energy_value(cfg))
-    CMS.SetLumi(str(job.get("lumi_text", source_lumi_label(cfg, source))))
+    CMS.SetLumi(cms_lumi_value(cfg, source=source))
 
     pat = pat_hist.Clone(f"{pat_hist.GetName()}_{sanitize(era_key)}_pat_norm")
     sct = sct_hist.Clone(f"{sct_hist.GetName()}_{sanitize(era_key)}_sct_norm")
