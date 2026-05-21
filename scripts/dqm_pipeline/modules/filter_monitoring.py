@@ -117,6 +117,10 @@ def cms_lumi_value(cfg, source=None):
     return total if total > 0.0 else None
 
 
+def cms_square():
+    return getattr(CMS, "kSquare", True)
+
+
 def default_bins(axis):
     if str(axis).lower() == "eta":
         return [-2.5 + i * 0.5 for i in range(11)]
@@ -319,7 +323,7 @@ def draw_filter_canvas(
         x_title,
         "efficiency",
         "w. prev",
-        square=CMS.kSquare,
+        square=cms_square(),
         extraSpace=0.0,
         iPos=0,
     )
@@ -390,7 +394,7 @@ def draw_filter_era_comparison_canvas(
         x_title,
         "efficiency",
         "step eff.",
-        square=CMS.kSquare,
+        square=cms_square(),
         extraSpace=0.0,
         iPos=0,
     )
@@ -474,7 +478,7 @@ def draw_run_trend_canvas(
         y_max,
         "Run number",
         "Overall efficiency",
-        square=CMS.kSquare,
+        square=cms_square(),
         extraSpace=0.0,
         iPos=0,
     )

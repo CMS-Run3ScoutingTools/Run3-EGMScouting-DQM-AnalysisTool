@@ -122,6 +122,10 @@ def cms_lumi_value(cfg):
     return total if total > 0.0 else None
 
 
+def cms_square():
+    return getattr(CMS, "kSquare", True)
+
+
 def register_canvas_input(canvas, key, obj):
     if not hasattr(canvas, "_input_cache"):
         canvas._input_cache = {}
@@ -237,7 +241,7 @@ def plot_quantity_per_era(cfg, job, era_hists, era_sources, out_base, logy=False
         x_title,
         y_title,
         ratio_title,
-        square=CMS.kSquare,
+        square=cms_square(),
         extraSpace=0.0,
         iPos=0,
     )

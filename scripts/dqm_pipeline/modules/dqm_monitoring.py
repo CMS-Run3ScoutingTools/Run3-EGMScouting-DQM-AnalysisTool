@@ -69,6 +69,10 @@ def cms_lumi_value(cfg, source=None):
     return total if total > 0.0 else None
 
 
+def cms_square():
+    return getattr(CMS, "kSquare", True)
+
+
 def register_canvas_input(canvas, key, obj):
     if not hasattr(canvas, "_input_cache"):
         canvas._input_cache = {}
@@ -124,7 +128,7 @@ def draw_hist_overlay(cfg, hist_name, era_hists, era_sources, out_base, job):
         y_max,
         x_title,
         y_title,
-        square=CMS.kSquare,
+        square=cms_square(),
         extraSpace=0.0,
         iPos=0,
     )
@@ -187,7 +191,7 @@ def draw_pat_sct_comparison(cfg, era_key, source, quantity, region, pat_hist, sc
         str(job.get("x_title", quantity)),
         str(job.get("y_title", "A.U.")),
         str(job.get("ratio_title", "Scouting / PAT")),
-        square=CMS.kSquare,
+        square=cms_square(),
         extraSpace=0.0,
         iPos=0,
     )

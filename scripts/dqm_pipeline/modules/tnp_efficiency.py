@@ -64,6 +64,10 @@ def cms_lumi_value(cfg):
     return total if total > 0.0 else None
 
 
+def cms_square():
+    return getattr(CMS, "kSquare", True)
+
+
 def register_canvas_input(canvas, key, obj):
     if not hasattr(canvas, "_input_cache"):
         canvas._input_cache = {}
@@ -198,7 +202,7 @@ def plot_tnp_efficiency(cfg, job, tag, per_era_data, era_sources, out_base, mc_d
         x_label,
         "efficiency",
         ratio_label,
-        square=CMS.kSquare,
+        square=cms_square(),
         extraSpace=0.0,
         iPos=0,
     )
