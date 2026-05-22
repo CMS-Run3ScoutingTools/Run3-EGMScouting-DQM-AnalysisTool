@@ -102,33 +102,20 @@ quantity_per_era:
   rebin: 2
   scale_to: 100000.0
   hist_path_template: DQMData/Run {run}/ScoutingMonitoring/Run summary/{hist}
-  jobs:
-    - name: sctElectron_Pt_Barrel
-      hist: resonanceZ_Probe_sctElectron_Pt_Barrel
-      quantity: Pt_Barrel
-      probe_type: sct
-      region: Barrel
+  hist_name_style: scouting_monitoring
+  tagging_type: none
+  probe_types: [sct]
+  quantities: [Pt, Eta, Phi]
+  regions: [Barrel, Endcap]
+  regionless_quantities: [Eta, Phi]
+  quantity_overrides:
+    Pt:
       x_title: p_{T} [GeV]
       x_range: [0.0, 500.0]
-    - name: sctElectron_Pt_Endcap
-      hist: resonanceZ_Probe_sctElectron_Pt_Endcap
-      quantity: Pt_Endcap
-      probe_type: sct
-      region: Endcap
-      x_title: p_{T} [GeV]
-      x_range: [0.0, 500.0]
-    - name: sctElectron_Eta
-      hist: resonanceZ_Probe_sctElectron_Eta
-      quantity: Eta
-      probe_type: sct
-      region: Full
+    Eta:
       x_title: "#eta"
       x_range: [-5.0, 5.0]
-    - name: sctElectron_Phi
-      hist: resonanceZ_Probe_sctElectron_Phi
-      quantity: Phi
-      probe_type: sct
-      region: Full
+    Phi:
       x_title: "#phi"
       x_range: [-3.3, 3.3]
 

@@ -154,8 +154,10 @@ def build_quantity_hist_name(resonance, job):
     tagging_type = str(job.get("tagging_type", "pat"))
     probe_type = str(job.get("probe_type", "sct"))
     quantity = str(job["quantity"])
-    region = str(job["region"])
-    return f"{resonance}_Tag_{tagging_type}_Probe_{probe_type}Electron_{quantity}_{region}"
+    region = job.get("region")
+    if job.get("use_region_suffix", True):
+        return f"{resonance}_Tag_{tagging_type}_Probe_{probe_type}Electron_{quantity}_{region}"
+    return f"{resonance}_Probe_{probe_type}Electron_{quantity}"
 
 
 def expand_jobs(section):
@@ -167,18 +169,42 @@ def expand_jobs(section):
     probe_types = list(section.get("probe_types", []))
     regions = list(section.get("regions", []))
     tagging_type = str(section.get("tagging_type", "pat"))
+    regionless_quantities = {str(item) for item in section.get("regionless_quantities", [])}
+    hist_name_style = str(section.get("hist_name_style", "tnp"))
 
     expanded = []
-    for quantity, probe_type, region in product(quantities, probe_types, regions):
-        expanded.append(
-            {
-                "name": f"{quantity}_{probe_type}_{region}",
-                "quantity": quantity,
-                "probe_type": probe_type,
-                "region": region,
-                "tagging_type": tagging_type,
-            }
-        )
+    for quantity, probe_type in product(quantities, probe_types):
+        if str(quantity) in regionless_quantities:
+            expanded.append(
+                {
+                    "name": f"{probe_type}Electron_{quantity}",
+                    "quantity": quantity,
+                    "probe_type": probe_type,
+                    "region": "Full",
+                    "tagging_type": tagging_type,
+                    "use_region_suffix": False,
+                    "hist": f"{section.get('resonance', '')}_Probe_{probe_type}Electron_{quantity}".lstrip("_")
+                    if hist_name_style == "scouting_monitoring"
+                    else None,
+                }
+            )
+            continue
+
+        for region in regions:
+            hist = None
+            if hist_name_style == "scouting_monitoring":
+                hist = f"{section.get('resonance', '')}_Probe_{probe_type}Electron_{quantity}_{region}".lstrip("_")
+            expanded.append(
+                {
+                    "name": f"{probe_type}Electron_{quantity}_{region}",
+                    "quantity": quantity,
+                    "probe_type": probe_type,
+                    "region": region,
+                    "tagging_type": tagging_type,
+                    "use_region_suffix": True,
+                    "hist": hist,
+                }
+            )
     return expanded
 
 
@@ -346,6 +372,8 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
     default_scale_to = float(section.get("scale_to", 100000.0))
     quantity_overrides = section.get("quantity_overrides", {})
 
+    section = dict(section)
+    section.setdefault("resonance", resonance)
     jobs = expand_jobs(section)
     emit_log(progress, f"[{MODULE_NAME}] start jobs={len(jobs)} eras={len(era_sources)} out_dir={out_dir}", style="blue")
 
