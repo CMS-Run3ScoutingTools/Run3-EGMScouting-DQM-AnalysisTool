@@ -21,7 +21,7 @@ eras:
     run_number: 333334
     file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026B_v2/data.root
   2026D_Run403716:
-    label: 2026D
+    label: 2026D-Run403716
     year: 2026
     golden_json: null
     lumi_fb: 1
@@ -29,7 +29,7 @@ eras:
     file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026D-Run403716/data.root
 
   2026D_Run403937:
-    label: 2026D
+    label: 2026D-Run403937
     year: 2026
     golden_json: null
     lumi_fb: 1
@@ -101,27 +101,36 @@ quantity_per_era:
   output_subdir: quantityPlot
   rebin: 2
   scale_to: 100000.0
-  target_dir: Tag_PatElectron
-  tagging_type: pat
-  probe_types: [pat, sct]
-  regions: [Barrel, Endcap]
-  quantities:
-    - Pt
-    - HoverE
-    - OoEMOoP
-    - MissingHits
-    - RelEcalIsolation
-    - RelHcalIsolation
-    - RelTrackIsolation
-    - SigmaIetaIeta
-    - Trackfbrem
-    - dEtaIn
-    - dPhiIn
-    - Eta
-  hist_path_template: DQMData/Run {run}/HLT/Run summary/ScoutingOffline/EGamma/TnP/{target_dir}/{hist}
-  quantity_overrides:
-    Pt:
-      x_range: [0.0, 130.0]
+  hist_path_template: DQMData/Run {run}/ScoutingMonitoring/Run summary/{hist}
+  jobs:
+    - name: sctElectron_Pt_Barrel
+      hist: resonanceZ_Probe_sctElectron_Pt_Barrel
+      quantity: Pt_Barrel
+      probe_type: sct
+      region: Barrel
+      x_title: p_{T} [GeV]
+      x_range: [0.0, 500.0]
+    - name: sctElectron_Pt_Endcap
+      hist: resonanceZ_Probe_sctElectron_Pt_Endcap
+      quantity: Pt_Endcap
+      probe_type: sct
+      region: Endcap
+      x_title: p_{T} [GeV]
+      x_range: [0.0, 500.0]
+    - name: sctElectron_Eta
+      hist: resonanceZ_Probe_sctElectron_Eta
+      quantity: Eta
+      probe_type: sct
+      region: Full
+      x_title: "#eta"
+      x_range: [-5.0, 5.0]
+    - name: sctElectron_Phi
+      hist: resonanceZ_Probe_sctElectron_Phi
+      quantity: Phi
+      probe_type: sct
+      region: Full
+      x_title: "#phi"
+      x_range: [-3.3, 3.3]
 
 dqm_monitoring:
   enabled: true
@@ -141,21 +150,37 @@ dqm_monitoring:
       logy: true
       x_title: M_{ee} [GeV]
       y_title: Events
+    - name: sctElectron_Pt_Barrel
+      hist: resonanceZ_Probe_sctElectron_Pt_Barrel
+      rebin: 2
+      x_title: p_{T} [GeV]
+      y_title: Events
+      x_min: 0.0
+      x_max: 500.0
+    - name: sctElectron_Pt_Endcap
+      hist: resonanceZ_Probe_sctElectron_Pt_Endcap
+      rebin: 2
+      x_title: p_{T} [GeV]
+      y_title: Events
+      x_min: 0.0
+      x_max: 500.0
+    - name: sctElectron_Eta
+      hist: resonanceZ_Probe_sctElectron_Eta
+      rebin: 2
+      x_title: "#eta"
+      y_title: Events
+      x_min: -5.0
+      x_max: 5.0
+    - name: sctElectron_Phi
+      hist: resonanceZ_Probe_sctElectron_Phi
+      rebin: 2
+      x_title: "#phi"
+      y_title: Events
+      x_min: -3.3
+      x_max: 3.3
   comparison_rebin: 2
-  quantities:
-    - Pt
-    - HoverE
-    - OoEMOoP
-    - MissingHits
-    - RelEcalIsolation
-    - RelHcalIsolation
-    - RelTrackIsolation
-    - SigmaIetaIeta
-    - Trackfbrem
-    - dEtaIn
-    - dPhiIn
-    - Eta
-  regions: [Barrel, Endcap]
+  quantities: []
+  regions: []
 
 filter_monitoring:
   enabled: true
@@ -222,4 +247,3 @@ filter_monitoring:
       region: Barrel
       base_tags:
         - DST_PFScouting_DoubleEG_v
-

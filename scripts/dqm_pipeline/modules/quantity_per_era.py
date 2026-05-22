@@ -148,6 +148,9 @@ def register_canvas_input(canvas, key, obj):
 
 
 def build_quantity_hist_name(resonance, job):
+    if job.get("hist"):
+        return str(job["hist"])
+
     tagging_type = str(job.get("tagging_type", "pat"))
     probe_type = str(job.get("probe_type", "sct"))
     quantity = str(job["quantity"])
