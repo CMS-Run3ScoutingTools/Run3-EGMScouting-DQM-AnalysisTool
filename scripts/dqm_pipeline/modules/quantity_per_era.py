@@ -161,6 +161,26 @@ def build_quantity_hist_name(resonance, job):
     return f"{tag_prefix}_Probe_{probe_type}Electron_{quantity}"
 
 
+def build_quantity_hist_candidates(resonance, job):
+    if job.get("hist_candidates"):
+        return [str(item) for item in job["hist_candidates"]]
+
+    primary = build_quantity_hist_name(resonance, job)
+    candidates = [primary]
+
+    fallback = job.get("fallback_hist")
+    if fallback:
+        candidates.append(str(fallback))
+
+    out = []
+    seen = set()
+    for item in candidates:
+        if item not in seen:
+            out.append(item)
+            seen.add(item)
+    return out
+
+
 def expand_jobs(section):
     jobs = section.get("jobs")
     if jobs:
@@ -173,29 +193,34 @@ def expand_jobs(section):
     regionless_quantities = {str(item) for item in section.get("regionless_quantities", [])}
     hist_name_style = str(section.get("hist_name_style", "tnp"))
     tag_prefix = f"{section.get('resonance', '')}_Tag_{tagging_type}" if tagging_type not in ("", "none", "None") else str(section.get("resonance", ""))
+    untagged_prefix = str(section.get("resonance", ""))
 
     expanded = []
     for quantity, probe_type in product(quantities, probe_types):
         if str(quantity) in regionless_quantities:
-            expanded.append(
-                {
-                    "name": f"{probe_type}Electron_{quantity}",
-                    "quantity": quantity,
-                    "probe_type": probe_type,
-                    "region": "Full",
-                    "tagging_type": tagging_type,
-                    "use_region_suffix": False,
-                    "hist": f"{tag_prefix}_Probe_{probe_type}Electron_{quantity}".lstrip("_")
-                    if hist_name_style == "scouting_monitoring"
-                    else None,
-                }
-            )
+            entry = {
+                "name": f"{probe_type}Electron_{quantity}",
+                "quantity": quantity,
+                "probe_type": probe_type,
+                "region": "Full",
+                "tagging_type": tagging_type,
+                "use_region_suffix": False,
+            }
+            if hist_name_style == "scouting_monitoring":
+                entry["hist_candidates"] = [
+                    f"{tag_prefix}_Probe_{probe_type}Electron_{quantity}".lstrip("_"),
+                    f"{untagged_prefix}_Probe_{probe_type}Electron_{quantity}".lstrip("_"),
+                ]
+            expanded.append(entry)
             continue
 
         for region in regions:
-            hist = None
+            hist_candidates = None
             if hist_name_style == "scouting_monitoring":
-                hist = f"{tag_prefix}_Probe_{probe_type}Electron_{quantity}_{region}".lstrip("_")
+                hist_candidates = [
+                    f"{tag_prefix}_Probe_{probe_type}Electron_{quantity}_{region}".lstrip("_"),
+                    f"{untagged_prefix}_Probe_{probe_type}Electron_{quantity}_{region}".lstrip("_"),
+                ]
             expanded.append(
                 {
                     "name": f"{probe_type}Electron_{quantity}_{region}",
@@ -204,7 +229,7 @@ def expand_jobs(section):
                     "region": region,
                     "tagging_type": tagging_type,
                     "use_region_suffix": True,
-                    "hist": hist,
+                    "hist_candidates": hist_candidates,
                 }
             )
     return expanded
@@ -389,7 +414,8 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
         job.update(quantity_overrides.get(str(job.get("quantity")), {}))
         job_name = str(job.get("name", f"{job['quantity']}_{job['probe_type']}_{job['region']}"))
         emit_log(progress, f"[{MODULE_NAME}] job start: {job_name}", style="blue")
-        hist_name = build_quantity_hist_name(resonance, job)
+        hist_candidates = build_quantity_hist_candidates(resonance, job)
+        hist_name = hist_candidates[0]
         era_hists = {}
         summary[job_name] = {}
 
@@ -400,20 +426,37 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
 
         for era_key, source in era_items:
             try:
-                hist, used_runs = aggregate_histogram_for_era(
-                    era=era_key,
-                    source=source,
-                    hist_path_template=path_template,
-                    fmt_args={"target_dir": target_dir, "hist": hist_name},
-                    strict=strict,
-                )
+                hist = None
+                used_runs = []
+                selected_hist_name = None
+                for candidate_hist_name in hist_candidates:
+                    hist, used_runs = aggregate_histogram_for_era(
+                        era=era_key,
+                        source=source,
+                        hist_path_template=path_template,
+                        fmt_args={"target_dir": target_dir, "hist": candidate_hist_name},
+                        strict=strict,
+                    )
+                    if hist is not None:
+                        selected_hist_name = candidate_hist_name
+                        break
                 if hist is None:
-                    summary[job_name][era_key] = {"status": "empty", "used_runs": 0}
+                    summary[job_name][era_key] = {
+                        "status": "empty",
+                        "used_runs": 0,
+                        "hist_candidates": hist_candidates,
+                    }
                     continue
 
                 integral = hist.Integral()
                 if integral <= 0:
-                    summary[job_name][era_key] = {"status": "empty", "used_runs": used_runs, "integral": float(integral)}
+                    summary[job_name][era_key] = {
+                        "status": "empty",
+                        "used_runs": used_runs,
+                        "integral": float(integral),
+                        "hist": selected_hist_name,
+                        "hist_candidates": hist_candidates,
+                    }
                     continue
 
                 rebin_factor = int(job.get("rebin", default_rebin))
@@ -437,6 +480,8 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                 summary[job_name][era_key] = {
                     "status": "ok",
                     "used_runs": used_runs,
+                    "hist": selected_hist_name,
+                    "hist_candidates": hist_candidates,
                     "integral_before_scale": float(integral),
                     "scale_factor": float(scale_factor),
                 }
