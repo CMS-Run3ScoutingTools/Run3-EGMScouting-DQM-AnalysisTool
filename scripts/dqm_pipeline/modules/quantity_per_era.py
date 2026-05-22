@@ -5,7 +5,7 @@ import ROOT
 import cmsstyle as CMS
 import yaml
 
-from dqm_pipeline.core import aggregate_histogram_for_era, emit_log, sanitize
+from dqm_pipeline.core import aggregate_histogram_for_era, candidate_root_paths, emit_log, sanitize
 
 
 MODULE_NAME = "quantity_per_era"
@@ -179,6 +179,57 @@ def build_quantity_hist_candidates(resonance, job):
             out.append(item)
             seen.add(item)
     return out
+
+
+def matching_key_hint(source, path_template, target_dir, hist_candidates, limit=40):
+    run_files = source.get("run_files", {})
+    if not run_files:
+        return {}
+
+    run = sorted(run_files.keys())[0]
+    sample_file = run_files[run][0] if run_files[run] else None
+    if not sample_file:
+        return {}
+
+    sample_path = path_template.format(run=run, target_dir=target_dir, hist=hist_candidates[0])
+    dir_path = sample_path.rsplit("/", 1)[0] if "/" in sample_path else ""
+    needles = []
+    for hist_name in hist_candidates:
+        for token in str(hist_name).split("_"):
+            if token and token not in needles:
+                needles.append(token)
+    strong_needles = [token for token in needles if token in {"Pt", "Eta", "Phi", "sctElectron", "Probe", "Tag", "pat"}]
+
+    for file_path in source.get("run_files", {}).get(run, []):
+        for candidate_file in candidate_root_paths(file_path, extra_redirectors=source.get("xrootd_redirectors")):
+            root_file = ROOT.TFile.Open(candidate_file)
+            if not root_file or root_file.IsZombie():
+                continue
+            directory = root_file.Get(dir_path)
+            if not directory:
+                root_file.Close()
+                continue
+
+            matches = []
+            for key in directory.GetListOfKeys():
+                key_name = key.GetName()
+                if any(token in key_name for token in strong_needles):
+                    matches.append(key_name)
+                if len(matches) >= int(limit):
+                    break
+            root_file.Close()
+            return {
+                "sample_run": int(run),
+                "sample_file": str(file_path),
+                "sample_dir": dir_path,
+                "matching_keys": matches,
+            }
+    return {
+        "sample_run": int(run),
+        "sample_file": str(sample_file),
+        "sample_dir": dir_path,
+        "matching_keys": [],
+    }
 
 
 def expand_jobs(section):
@@ -429,7 +480,12 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                 hist = None
                 used_runs = []
                 selected_hist_name = None
+                attempted_paths = []
                 for candidate_hist_name in hist_candidates:
+                    for run in sorted(source.get("run_files", {}).keys()):
+                        attempted_paths.append(
+                            path_template.format(run=run, target_dir=target_dir, hist=candidate_hist_name)
+                        )
                     hist, used_runs = aggregate_histogram_for_era(
                         era=era_key,
                         source=source,
@@ -444,7 +500,9 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     summary[job_name][era_key] = {
                         "status": "empty",
                         "used_runs": 0,
-                        "hist_candidates": hist_candidates,
+                        "hist_candidates": list(hist_candidates),
+                        "attempted_paths": attempted_paths[:10],
+                        "key_hint": matching_key_hint(source, path_template, target_dir, hist_candidates),
                     }
                     continue
 
@@ -455,7 +513,8 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                         "used_runs": used_runs,
                         "integral": float(integral),
                         "hist": selected_hist_name,
-                        "hist_candidates": hist_candidates,
+                        "hist_candidates": list(hist_candidates),
+                        "attempted_paths": attempted_paths[:10],
                     }
                     continue
 
@@ -481,7 +540,7 @@ def run_module(cfg, era_sources, out_root, strict=False, progress=None):
                     "status": "ok",
                     "used_runs": used_runs,
                     "hist": selected_hist_name,
-                    "hist_candidates": hist_candidates,
+                    "hist_candidates": list(hist_candidates),
                     "integral_before_scale": float(integral),
                     "scale_factor": float(scale_factor),
                 }

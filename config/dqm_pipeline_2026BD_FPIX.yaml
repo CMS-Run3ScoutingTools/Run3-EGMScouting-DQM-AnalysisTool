@@ -103,7 +103,7 @@ quantity_per_era:
   output_subdir: quantityPlot
   rebin: 2
   scale_to: 100000.0
-  hist_path_template: DQMData/Run {run}/ScoutingMonitoring/Run summary/{hist}
+    hist_path_template: DQMData/Run {run}/HLT/Run summary/ScoutingOffline/EGamma/TnP/Tag_PatElectron/{hist}
   hist_name_style: scouting_monitoring
   tagging_type: pat
   probe_types: [sct]
