@@ -1,0 +1,225 @@
+tag: EGM_Scouting_DQM_2026BD_v2
+resonance: resonanceZ
+output_dir: plot_DQM2026BD_FPIX
+
+plotting:
+  run: Run 3
+  campaign_label: Run 2026
+  lumi_text: Run 2026 (13.6 TeV)
+  energy_tev: 13.6
+  cms_extra_text: Preliminary
+
+lumi:
+  use_brilcalc: false
+
+eras:
+  2026B_v2:
+    label: 2026B
+    year: 2026
+    golden_json: null
+    lumi_fb: 15.860
+    run_number: 333334
+    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026B_v2/data.root
+  2026D_Run403716:
+    label: 2026D
+    year: 2026
+    golden_json: null
+    lumi_fb: 1
+    run_number: 333334
+    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026D-Run403716/data.root
+
+  2026D_Run403937:
+    label: 2026D
+    year: 2026
+    golden_json: null
+    lumi_fb: 1
+    run_number: 333334
+    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026D-Run403937/data.root
+
+mass_fit:
+  enabled: true
+  output_subdir: mass_fit
+  rebin: 1
+  bkg_type: exp
+  overlay_rebin: 2
+  overlay_scale: lumi_fb
+  overlay_x_min: 1.0
+  hist_path_template: DQMData/Run {run}/HLT/Run summary/ScoutingOffline/EGamma/Collection/{var}
+  variables:
+    - sctElectron_EBEB_appliedID_invMass
+    - sctElectron_EBEB_appliedID_invMass_pass_DST_PFScouting_DoubleEG_v
+  fit_windows:
+    JPsi:
+      xmin: 1.0
+      xmax: 5.0
+      ymin: 1.0
+      ymax: 5.0
+      nbins: 40
+      bkg_type: quintic
+    Z:
+      xmin: 70.0
+      xmax: 110.0
+      ymin: 80.0
+      ymax: 100.0
+      nbins: 40
+      bkg_type: exp
+
+tnp_efficiency:
+  enabled: true
+  output_subdir: tnp_efficiency
+  rebin: 1
+  hist_path_template: DQMData/Run {run}/HLT/Run summary/ScoutingOffline/EGamma/TnP/{target_dir}/{hist}
+  bins:
+    pt: [0, 5, 10, 15, 20, 30, 40, 50, 80, 120, 200]
+    eta: [-2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
+  jobs:
+    - name: dst_singlePhotonEB_patTag_sctProbe_leading_barrel
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
+      pt_order: leading
+      axis: pt
+      region: Barrel
+      tags:
+        - DST_PFScouting_SinglePhotonEB_v
+        - DST_PFScouting_SinglePhotonEB_v_fireTrigObj
+      include_mc: false
+    - name: dst_doubleEG_patTag_sctProbe_subleading_barrel
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
+      pt_order: subleading
+      axis: pt
+      region: Barrel
+      tags:
+        - DST_PFScouting_DoubleEG_v
+        - DST_PFScouting_DoubleEG_v_fireTrigObj
+      include_mc: false
+
+quantity_per_era:
+  enabled: true
+  output_subdir: quantityPlot
+  rebin: 2
+  scale_to: 100000.0
+  target_dir: Tag_PatElectron
+  tagging_type: pat
+  probe_types: [pat, sct]
+  regions: [Barrel, Endcap]
+  quantities:
+    - Pt
+    - HoverE
+    - OoEMOoP
+    - MissingHits
+    - RelEcalIsolation
+    - RelHcalIsolation
+    - RelTrackIsolation
+    - SigmaIetaIeta
+    - Trackfbrem
+    - dEtaIn
+    - dPhiIn
+    - Eta
+  hist_path_template: DQMData/Run {run}/HLT/Run summary/ScoutingOffline/EGamma/TnP/{target_dir}/{hist}
+  quantity_overrides:
+    Pt:
+      x_range: [0.0, 130.0]
+
+dqm_monitoring:
+  enabled: true
+  output_subdir: dqm_monitoring
+  hist_path_template: DQMData/Run {run}/ScoutingMonitoring/Run summary/{hist}
+  rebin: 2
+  histograms:
+    - name: sctElectron_EBEB_appliedID_invMass
+      hist: sctElectron_EBEB_appliedID_invMass
+      rebin: 2
+      logy: true
+      x_title: M_{ee} [GeV]
+      y_title: Events
+    - name: sctElectron_EBEB_appliedID_invMass_pass_DST_PFScouting_DoubleEG_v
+      hist: sctElectron_EBEB_appliedID_invMass_pass_DST_PFScouting_DoubleEG_v
+      rebin: 2
+      logy: true
+      x_title: M_{ee} [GeV]
+      y_title: Events
+  comparison_rebin: 2
+  quantities:
+    - Pt
+    - HoverE
+    - OoEMOoP
+    - MissingHits
+    - RelEcalIsolation
+    - RelHcalIsolation
+    - RelTrackIsolation
+    - SigmaIetaIeta
+    - Trackfbrem
+    - dEtaIn
+    - dPhiIn
+    - Eta
+  regions: [Barrel, Endcap]
+
+filter_monitoring:
+  enabled: true
+  output_subdir: filter_monitoring
+  rebin: 1
+  ratio_ymin: 0.9
+  ratio_ymax: 1.1
+  legend_cols: 2
+  save_era_comparison: true
+  save_run_trends: false
+  hist_path_template: DQMData/Run {run}/HLT/Run summary/ScoutingOffline/EGamma/TnP/{target_dir}/{hist}
+  trigger_setting:
+    DST_PFScouting_DoubleEG_v:
+      - hltEGL1DoubleIsoEG11Filter
+      - hltDoubleEG11CaloIdLEt11Filter
+      - hltDoubleEG11CaloIdLClusterShapeFilter
+      - hltDoubleEG11CaloIdLHEFilter
+    DST_PFScouting_SinglePhotonEB_v:
+      - hltEGL1SingleEGOrFilter
+      - hltEG30EBTightIDTightIsoEtFilter
+      - hltEG30EBTightIDTightIsoClusterShapeFilter
+      - hltEG30EBTightIDTightIsoHEFilter
+      - hltEG30EBTightIDTightIsoR9Filter
+      - hltEG30EBTightIDTightIsotEcalIsoFilter
+      - hltEG30EBTightIDTightIsoHcalIsoFilter
+      - hltEG30EBTightIDTightIsoTrackIsoFilter
+  bins:
+    pt: [0, 5, 10, 15, 20, 30, 40, 50, 80, 120, 200]
+    eta: [-2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
+  jobs:
+    - name: dst_singlePhotonEB_patTag_sctProbe_leading_barrel_filters
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
+      pt_order: leading
+      axis: pt
+      region: Barrel
+      base_tags:
+        - DST_PFScouting_SinglePhotonEB_v
+    - name: dst_singlePhotonEB_patTag_sctProbe_leading_barrel_filters
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
+      pt_order: leading
+      axis: eta
+      region: Barrel
+      base_tags:
+        - DST_PFScouting_SinglePhotonEB_v
+    - name: dst_doubleEG_patTag_sctProbe_subleading_barrel_filters
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
+      pt_order: subleading
+      axis: pt
+      region: Barrel
+      base_tags:
+        - DST_PFScouting_DoubleEG_v
+    - name: dst_doubleEG_patTag_sctProbe_subleading_barrel_filters
+      tagging_type: pat
+      probe_type: sct
+      target_dir: Tag_PatElectron
+      pt_order: subleading
+      axis: eta
+      region: Barrel
+      base_tags:
+        - DST_PFScouting_DoubleEG_v
+
