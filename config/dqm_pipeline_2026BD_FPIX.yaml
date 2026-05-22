@@ -107,8 +107,21 @@ quantity_per_era:
   hist_name_style: scouting_monitoring
   tagging_type: pat
   probe_types: [sct]
-  quantities: [Pt, Eta, Phi]
   regions: [Barrel, Endcap]
+  quantities:
+    - Pt
+    - HoverE
+    - OoEMOoP
+    - MissingHits
+    - RelEcalIsolation
+    - RelHcalIsolation
+    - RelTrackIsolation
+    - SigmaIetaIeta
+    - Trackfbrem
+    - dEtaIn
+    - dPhiIn
+    - Eta
+    - Phi
   regionless_quantities: [Eta, Phi]
   quantity_overrides:
     Pt:
