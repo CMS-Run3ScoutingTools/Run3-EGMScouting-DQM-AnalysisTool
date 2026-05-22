@@ -1,4 +1,4 @@
-tag: EGM_Scouting_DQM_2026BD_v2
+tag: EGM_Scouting_DQM_2026BD_FPIX
 resonance: resonanceZ
 output_dir: plot_DQM2026BD_FPIX
 
@@ -21,7 +21,7 @@ eras:
     run_number: 333334
     file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026B_v2/data.root
   2026D_Run403716:
-    label: 2026D-Run403716
+    label: Run403716(2026D)
     year: 2026
     golden_json: null
     lumi_fb: 1
@@ -29,7 +29,7 @@ eras:
     file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026D-Run403716/data.root
 
   2026D_Run403937:
-    label: 2026D-Run403937
+    label: Run403937(2026D)
     year: 2026
     golden_json: null
     lumi_fb: 1
@@ -105,7 +105,7 @@ quantity_per_era:
   scale_to: 100000.0
   hist_path_template: DQMData/Run {run}/ScoutingMonitoring/Run summary/{hist}
   hist_name_style: scouting_monitoring
-  tagging_type: none
+  tagging_type: pat
   probe_types: [sct]
   quantities: [Pt, Eta, Phi]
   regions: [Barrel, Endcap]
@@ -140,28 +140,28 @@ dqm_monitoring:
       x_title: M_{ee} [GeV]
       y_title: Events
     - name: sctElectron_Pt_Barrel
-      hist: resonanceZ_Probe_sctElectron_Pt_Barrel
+      hist: resonanceZ_Tag_pat_Probe_sctElectron_Pt_Barrel
       rebin: 2
       x_title: p_{T} [GeV]
       y_title: Events
       x_min: 0.0
       x_max: 500.0
     - name: sctElectron_Pt_Endcap
-      hist: resonanceZ_Probe_sctElectron_Pt_Endcap
+      hist: resonanceZ_Tag_pat_Probe_sctElectron_Pt_Endcap
       rebin: 2
       x_title: p_{T} [GeV]
       y_title: Events
       x_min: 0.0
       x_max: 500.0
     - name: sctElectron_Eta
-      hist: resonanceZ_Probe_sctElectron_Eta
+      hist: resonanceZ_Tag_pat_Probe_sctElectron_Eta
       rebin: 2
       x_title: "#eta"
       y_title: Events
       x_min: -5.0
       x_max: 5.0
     - name: sctElectron_Phi
-      hist: resonanceZ_Probe_sctElectron_Phi
+      hist: resonanceZ_Tag_pat_Probe_sctElectron_Phi
       rebin: 2
       x_title: "#phi"
       y_title: Events

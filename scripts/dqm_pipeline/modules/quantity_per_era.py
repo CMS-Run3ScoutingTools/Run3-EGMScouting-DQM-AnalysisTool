@@ -155,9 +155,10 @@ def build_quantity_hist_name(resonance, job):
     probe_type = str(job.get("probe_type", "sct"))
     quantity = str(job["quantity"])
     region = job.get("region")
+    tag_prefix = f"{resonance}_Tag_{tagging_type}" if tagging_type not in ("", "none", "None") else resonance
     if job.get("use_region_suffix", True):
-        return f"{resonance}_Tag_{tagging_type}_Probe_{probe_type}Electron_{quantity}_{region}"
-    return f"{resonance}_Probe_{probe_type}Electron_{quantity}"
+        return f"{tag_prefix}_Probe_{probe_type}Electron_{quantity}_{region}"
+    return f"{tag_prefix}_Probe_{probe_type}Electron_{quantity}"
 
 
 def expand_jobs(section):
@@ -171,6 +172,7 @@ def expand_jobs(section):
     tagging_type = str(section.get("tagging_type", "pat"))
     regionless_quantities = {str(item) for item in section.get("regionless_quantities", [])}
     hist_name_style = str(section.get("hist_name_style", "tnp"))
+    tag_prefix = f"{section.get('resonance', '')}_Tag_{tagging_type}" if tagging_type not in ("", "none", "None") else str(section.get("resonance", ""))
 
     expanded = []
     for quantity, probe_type in product(quantities, probe_types):
@@ -183,7 +185,7 @@ def expand_jobs(section):
                     "region": "Full",
                     "tagging_type": tagging_type,
                     "use_region_suffix": False,
-                    "hist": f"{section.get('resonance', '')}_Probe_{probe_type}Electron_{quantity}".lstrip("_")
+                    "hist": f"{tag_prefix}_Probe_{probe_type}Electron_{quantity}".lstrip("_")
                     if hist_name_style == "scouting_monitoring"
                     else None,
                 }
@@ -193,7 +195,7 @@ def expand_jobs(section):
         for region in regions:
             hist = None
             if hist_name_style == "scouting_monitoring":
-                hist = f"{section.get('resonance', '')}_Probe_{probe_type}Electron_{quantity}_{region}".lstrip("_")
+                hist = f"{tag_prefix}_Probe_{probe_type}Electron_{quantity}_{region}".lstrip("_")
             expanded.append(
                 {
                     "name": f"{probe_type}Electron_{quantity}_{region}",
