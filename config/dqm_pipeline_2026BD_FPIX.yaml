@@ -20,7 +20,7 @@ eras:
     lumi_fb: 15.860
     run_number: 333334
     file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026B_v2/data.root
-  2026D_Run403716:
+  Run403716:
     label: Run403716
     year: 2026
     golden_json: null
@@ -28,7 +28,7 @@ eras:
     run_number: 333334
     file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026D-Run403716/data.root
 
-  2026D_Run403937:
+  Run403937:
     label: Run403937
     year: 2026
     golden_json: null
