@@ -168,14 +168,14 @@ dqm_monitoring:
       x_max: 500.0
     - name: sctElectron_Eta
       hist: resonanceZ_Tag_pat_Probe_sctElectron_Eta
-      rebin: 2
+      rebin: 1
       x_title: "#eta"
       y_title: Events
       x_min: -5.0
       x_max: 5.0
     - name: sctElectron_Phi
       hist: resonanceZ_Tag_pat_Probe_sctElectron_Phi
-      rebin: 2
+      rebin: 1
       x_title: "#phi"
       y_title: Events
       x_min: -3.3
