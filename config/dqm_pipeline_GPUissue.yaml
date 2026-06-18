@@ -1,6 +1,6 @@
-tag: EGM_Scouting_DQM_2026_summary
+tag: EGM_Scouting_DQM_2026_GPUissue
 resonance: resonanceZ
-output_dir: plot_DQM2026_summary
+output_dir: plot_DQM2026_GPUissue
 
 plotting:
   run: Run 3
@@ -13,27 +13,27 @@ lumi:
   use_brilcalc: false
 
 eras:
-  2025G:
-    label: 2025G
-    year: 2025
-    golden_json: null
-    lumi_fb: 22.8
-    run_number: 333334
-    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2025G-v3/data.root
-  2026B:
-    label: 2026B
-    year: 2026
-    golden_json: null
-    lumi_fb: 15.86
-    run_number: 333334
-    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026B-v3/data.root
-  2026C:
-    label: 2026C
-    year: 2026
-    golden_json: null
-    lumi_fb: 2.14
-    run_number: 333334
-    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026C-v3/data.root
+#  2025G:
+#    label: 2025G
+#    year: 2025
+#    golden_json: null
+#    lumi_fb: 22.8
+#    run_number: 333334
+#    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2025G-v3/data.root
+#  2026B:
+#    label: 2026B
+#    year: 2026
+#    golden_json: null
+#    lumi_fb: 15.86
+#    run_number: 333334
+#    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026B_v3/data.root
+#  2026C:
+#    label: 2026C
+#    year: 2026
+#    golden_json: null
+#    lumi_fb: 2.14
+#    run_number: 333334
+#    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026C_v3/data.root
   2026D:
     label: 2026D
     year: 2026
@@ -41,6 +41,13 @@ eras:
     lumi_fb: 10.8
     run_number: 333334
     file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026D-v3/data.root
+  2026D-Run403441:
+    label: 2026D(Run403441)
+    year: 2026
+    golden_json: null
+    lumi_fb: 10.8
+    run_number: 333334
+    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026D-Run403441/data.root
 
 mass_fit:
   enabled: true
