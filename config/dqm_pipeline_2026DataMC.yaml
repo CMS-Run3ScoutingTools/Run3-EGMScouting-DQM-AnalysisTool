@@ -1,6 +1,6 @@
-tag: EGM_Scouting_DQM_2026_summary
+tag: EGM_Scouting_DQM_2026_DataMC
 resonance: resonanceZ
-output_dir: plot_DQM2026_summary
+output_dir: plot_DQM2026_DataMC
 
 plotting:
   run: Run 3
