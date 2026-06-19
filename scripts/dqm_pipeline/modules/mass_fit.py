@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import ROOT
+import cmsstyle as CMS
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,6 +12,20 @@ from dqm_pipeline.core import aggregate_histogram_for_era, sanitize, emit_log
 
 
 MODULE_NAME = "mass_fit"
+
+
+OVERLAY_COLORS = [
+    ROOT.TColor.GetColor("#3f90da"),
+    ROOT.TColor.GetColor("#ffa90e"),
+    ROOT.TColor.GetColor("#bd1f01"),
+    ROOT.TColor.GetColor("#94a4a2"),
+    ROOT.TColor.GetColor("#832db6"),
+    ROOT.TColor.GetColor("#a96b59"),
+    ROOT.TColor.GetColor("#e76300"),
+    ROOT.TColor.GetColor("#b9ac70"),
+    ROOT.TColor.GetColor("#717581"),
+    ROOT.TColor.GetColor("#92dadd"),
+]
 
 
 def source_display_label(source):
@@ -361,6 +377,23 @@ def overlay_scale_value(source, mode):
     return None
 
 
+def overlay_legend_label(source, scale_mode):
+    label = source_display_label(source)
+    if scale_mode == "lumi_fb" and source.get("lumi_fb") is not None:
+        return f"{label} [{float(source['lumi_fb']):.2f} fb^{{-1}}]"
+    if scale_mode == "golden_lumisections" and source.get("selected_lumisections", 0) > 0:
+        return f"{label} [{source['selected_lumisections']} golden LS]"
+    return label
+
+
+def overlay_y_axis_title(scale_mode):
+    if scale_mode == "lumi_fb":
+        return "Events per fb^{-1} / 0.1 GeV"
+    if scale_mode == "golden_lumisections":
+        return "Events per golden LS"
+    return "Events"
+
+
 def plot_mass_overlay(
     variable,
     era_hists,
@@ -371,85 +404,83 @@ def plot_mass_overlay(
     x_min=None,
     x_max=None,
 ):
-    fig, ax = plt.subplots(figsize=(9.2, 6.0))
+    shown_hists = []
+    y_max = 0.0
+    min_positive = None
+    x_low = max(1e-6, float(x_min)) if x_min is not None else None
+    x_high = float(x_max) if x_max is not None else None
 
     for era, hist in era_hists.items():
         source = era_sources[era]
         shown = hist.Clone(f"{hist.GetName()}_{sanitize(era)}_overlay")
+        shown.SetDirectory(0)
         scale = overlay_scale_value(source, scale_mode)
         if scale is not None and scale > 0:
             shown.Scale(1.0 / scale)
 
-        x = np.array([shown.GetBinCenter(i) for i in range(1, shown.GetNbinsX() + 1)])
-        y = np.array([shown.GetBinContent(i) for i in range(1, shown.GetNbinsX() + 1)])
-        mask = (x > 0) & (y > 0)
+        axis = shown.GetXaxis()
+        if x_low is None:
+            x_low = max(1e-6, float(axis.GetXmin()))
+        if x_high is None:
+            x_high = float(axis.GetXmax())
 
-        ax.step(
-            x[mask],
-            y[mask],
-            where="mid",
-            linewidth=1.6,
-            label=f"{source_display_label(source)} [{era_label_for_plots(source)}]",
+        y_max = max(y_max, float(shown.GetMaximum()))
+        for bin_idx in range(1, shown.GetNbinsX() + 1):
+            content = float(shown.GetBinContent(bin_idx))
+            if content > 0:
+                min_positive = content if min_positive is None else min(min_positive, content)
+
+        shown_hists.append((era, source, shown))
+
+    if not shown_hists:
+        return
+
+    y_min = 1e1
+    if min_positive is not None:
+        y_min = max(1e-6, min(1e1, min_positive / 5.0))
+    y_high = max(1e5, y_max * 20.0) if y_max > 0 else 1e5
+
+    canvas = CMS.cmsCanvas(
+        "",
+        float(x_low),
+        float(x_high),
+        y_min,
+        y_high,
+        "M_{e,e} [GeV]",
+        overlay_y_axis_title(scale_mode),
+        square=False,
+        extraSpace=0.01,
+        iPos=11,
+        yTitOffset=0.8,
+    )
+    legend = CMS.cmsLeg(0.3, 0.65, 0.96, 0.92, textSize=0.033, columns=3)
+
+    for idx, (era, source, shown) in enumerate(shown_hists):
+        color = OVERLAY_COLORS[idx % len(OVERLAY_COLORS)]
+        CMS.cmsDraw(
+            shown,
+            "HIST",
+            mcolor=color,
+            fstyle=0,
+            lwidth=2,
+            lcolor=color,
+            fcolor=0,
+            msize=0,
         )
+        legend.AddEntry(shown, overlay_legend_label(source, scale_mode), "L")
 
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_xlabel("M$_{ee}$ [GeV]", fontsize=22)
-    if x_min is not None or x_max is not None:
-        current_xmin, current_xmax = ax.get_xlim()
-        ax.set_xlim(float(x_min) if x_min is not None else current_xmin, float(x_max) if x_max is not None else current_xmax)
+    canvas.SetLogx()
+    canvas.SetLogy()
+    frame = canvas.GetListOfPrimitives().FindObject("hframe")
+    if frame:
+        frame.GetYaxis().SetLabelSize(0.04)
+        frame.GetXaxis().SetLabelSize(0.04)
+        frame.SetMaximum(y_high)
+        frame.SetMinimum(y_min)
 
-    if scale_mode == "lumi_fb":
-        ax.set_ylabel("Events / fb", fontsize=22)
-    elif scale_mode == "golden_lumisections":
-        ax.set_ylabel("Events / golden LS", fontsize=22)
-    else:
-        ax.set_ylabel("Events", fontsize=22)
-
-    ax.tick_params(axis="both", which="major", labelsize=16, direction="in", top=True, right=True, length=10)
-    ax.tick_params(axis="both", which="minor", direction="in", top=True, right=True, length=5)
-    ax.grid(True, which="both", alpha=0.25, linestyle=":")
-
-    ax.text(
-        0.00,
-        1.03,
-        "CMS",
-        transform=ax.transAxes,
-        ha="left",
-        va="bottom",
-        fontsize=20,
-        fontweight="bold",
-    )
-    ax.text(
-        0.10,
-        1.03,
-        "Preliminary",
-        transform=ax.transAxes,
-        ha="left",
-        va="bottom",
-        fontsize=17,
-        style="italic",
-    )
-    ax.text(
-        1.00,
-        1.03,
-        plot_lumi_text,
-        transform=ax.transAxes,
-        ha="right",
-        va="bottom",
-        fontsize=14,
-    )
-
-    ax.legend(
-        loc="upper right",
-        frameon=False,
-        fontsize=11,
-        handlelength=2.2,
-        labelspacing=0.6,
-    )
-    fig.subplots_adjust(left=0.14, right=0.99, bottom=0.13, top=0.88)
-    fig.savefig(out_png, dpi=140)
-    plt.close(fig)
+    out_base = Path(out_png)
+    CMS.SaveCanvas(canvas, str(out_base.with_suffix(".png")), close=False)
+    CMS.SaveCanvas(canvas, str(out_base.with_suffix(".pdf")))
 
 
 def plot_mass_by_era(results_by_era, out_png, ymin, ymax, title, plot_lumi_text="Run 3 (13.6 TeV)"):
