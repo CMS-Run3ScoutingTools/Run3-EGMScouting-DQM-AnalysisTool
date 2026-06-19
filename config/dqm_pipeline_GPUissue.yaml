@@ -47,7 +47,7 @@ eras:
     golden_json: null
     lumi_fb: 10.8
     run_number: 333334
-    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026D-Run403441/data.root
+    file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026D-RunGPUProblem/data.root
 
 mass_fit:
   enabled: true
