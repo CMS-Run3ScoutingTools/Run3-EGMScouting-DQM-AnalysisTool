@@ -42,7 +42,7 @@ eras:
     run_number: 333334
     file: /eos/user/t/tihsu/database/EGM_Scouting_DQM/2026D-v3/data.root
   2026D-Run403441:
-    label: 2026D(Run403441)
+    label: Run403441-403493
     year: 2026
     golden_json: null
     lumi_fb: 10.8
