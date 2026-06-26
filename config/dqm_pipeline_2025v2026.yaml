@@ -146,6 +146,30 @@ dqm_monitoring:
       logy: true
       x_title: M_{ee} [GeV]
       y_title: Events
+    - name: sctElectron_EBEE_appliedID_invMass
+      hist: sctElectron_EBEE_appliedID_invMass
+      rebin: 2
+      logy: true
+      x_title: M_{ee} [GeV]
+      y_title: Events
+    - name: sctElectron_EBEE_appliedID_invMass_pass_DST_PFScouting_DoubleEG_v
+      hist: sctElectron_EBEE_appliedID_invMass_pass_DST_PFScouting_DoubleEG_v
+      rebin: 2
+      logy: true
+      x_title: M_{ee} [GeV]
+      y_title: Events
+    - name: sctElectron_EEEE_appliedID_invMass
+      hist: sctElectron_EEEE_appliedID_invMass
+      rebin: 2
+      logy: true
+      x_title: M_{ee} [GeV]
+      y_title: Events
+    - name: sctElectron_EEEE_appliedID_invMass_pass_DST_PFScouting_DoubleEG_v
+      hist: sctElectron_EEEE_appliedID_invMass_pass_DST_PFScouting_DoubleEG_v
+      rebin: 2
+      logy: true
+      x_title: M_{ee} [GeV]
+      y_title: Events
   comparison_rebin: 2
   quantities:
     - Pt
