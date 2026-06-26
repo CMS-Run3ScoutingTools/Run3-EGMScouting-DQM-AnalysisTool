@@ -54,6 +54,11 @@ mass_fit:
   variables:
     - sctElectron_EBEB_appliedID_invMass
     - sctElectron_EBEB_appliedID_invMass_pass_DST_PFScouting_DoubleEG_v
+    - sctElectron_EBEE_appliedID_invMass
+    - sctElectron_EBEE_appliedID_invMass_pass_DST_PFScouting_DoubleEG_v
+    - sctElectron_EEEE_appliedID_invMass
+    - sctElectron_EEEE_appliedID_invMass_pass_DST_PFScouting_DoubleEG_v
+
   fit_windows:
     JPsi:
       xmin: 1.0
